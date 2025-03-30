@@ -1,0 +1,24 @@
+services:
+  allegrohand_ws:
+    image: allegrohand_ws
+    build: .
+    stdin_open: true # docker run -i
+    tty: true        # docker run -t
+    privileged: true
+    network_mode: host
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - XAUTHORITY=/tmp/.docker.xauth
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - $HOME/.Xauthority:/root/.Xauthority 
+      - ./../work/:/root/work/
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
