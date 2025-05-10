@@ -8,24 +8,23 @@ import yaml
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Launch multiple tactile_publisher.launch instances based on a YAML config."
+        description="Launch allegro_hand.launch instances based on a YAML config."
     )
     parser.add_argument(
-        "-c", "--config", default="./tactile_config/config.yaml",
-        help="YAML configuration file (default: tips.yaml)"
+        "-c", "--config", default="./allegro_config/config.yaml",
+        help="YAML configuration file (default: allegro_hand.yaml)"
     )
     return parser.parse_args()
 
-def load_tips(path):
+def load_config(path):
     with open(path, "r") as f:
         return yaml.safe_load(f)
 
 def main():
     args = parse_args()
-    tips = load_tips(args.config)
+    cfg = load_config(args.config)
 
     procs = []
-
     def shutdown(sig, frame):
         print("\nShutting down all launches...")
         for p in procs:
@@ -37,22 +36,17 @@ def main():
 
     signal.signal(signal.SIGINT, shutdown)
 
-    for ns, cfg in tips.items():
-        if not cfg.get("enable", False):
+    for name, params in cfg.items():
+        hand = params.get("hand_type")
+        if not hand:
+            print(f"Skipping '{name}': no 'hand_type' specified.")
             continue
 
-        file_arg = cfg["config"]
-        port_arg = cfg["port"]
-        ip_arg   = cfg["ip"]
-
         cmd = [
-            "roslaunch", "xela_server_ros", "tactile_publisher.launch",
-            f"file:={file_arg}",
-            f"port:={port_arg}",
-            f"ip:={ip_arg}",
-            f"ns:={ns}"
+            "roslaunch", "allegro_hand_controllers", "allegro_hand.launch",
+            f"HAND:={hand}"
         ]
-        print(f"Launching namespace `{ns}`: {' '.join(cmd)}")
+        print(f"Launching '{name}' (HAND={hand}): {' '.join(cmd)}")
         p = subprocess.Popen(cmd, preexec_fn=os.setsid)
         procs.append(p)
 

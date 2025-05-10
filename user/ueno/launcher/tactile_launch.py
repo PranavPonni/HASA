@@ -11,7 +11,7 @@ def parse_args():
         description="Launch multiple tactile_publisher.launch instances based on a YAML config."
     )
     parser.add_argument(
-        "-c", "--config", default="./tactile_config/config.yaml",
+        "-c", "--config", default="./sensor_launcher/config.yaml",
         help="YAML configuration file (default: tips.yaml)"
     )
     return parser.parse_args()

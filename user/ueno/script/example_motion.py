@@ -1,6 +1,8 @@
 from py_node_exec import NodeExec
 from allegro_package import AllegroHand
+import time
 import numpy as np
+
 
 
 if __name__ == "__main__":
@@ -9,9 +11,12 @@ if __name__ == "__main__":
     robot = AllegroHand(hand_topic_prefix="allegroHand_0",\
                         ctrl_freq=5)
 
-    while node.ok():
+    step=0
+    while node.ok() and step<50:
         obs=robot.get_obs()
         robot.set_joint_cmd(obs["jnt_pos"])
+        print(obs)
         node.sleep()
+        step+=1
         
     node.spin_thread_finish()

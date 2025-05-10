@@ -3,6 +3,8 @@ from xela_py import TactileSubscriber
 import time
 import numpy as np
 
+
+
 if __name__ == "__main__":
     node = NodeExec(freq=5)
     node.spin_thread_start()
