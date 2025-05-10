@@ -15,6 +15,7 @@ class TactileSubscriber:
         while not self._init_flg and not rospy.is_shutdown():
             rospy.sleep(0.1)
         rospy.loginfo(f"Succeed in subscribing topic: {topic_name}")
+        self.topic_name=topic_name
 
 
     def callback(self, msg):
@@ -39,7 +40,7 @@ class TactileSubscriber:
                 if self.check_half_or_more_below_or_equal_one(val):
                     return val
                 else:
-                    rospy.logwarn(f"Sensor {topic_name} is not valid")
+                    rospy.logwarn(f"Sensor {self.topic_name} is not valid")
             else:
                 rospy.logwarn("No tactile data received yet.")
                 return None
