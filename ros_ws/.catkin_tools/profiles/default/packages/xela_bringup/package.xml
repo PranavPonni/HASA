@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>xela_bringup</name>
+  <version>1.5.0</version>
+  <description>Node for launching the multiple tactile sensor</description>
+
+  <maintainer email="takahisaueno@fuji.waseda.jp">Takahisa</maintainer>
+  <license>GPLv3</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <depend>rospy</depend>
+  <depend>xela_server_ros</depend>
+
+  <export>
+  </export>
+</package>

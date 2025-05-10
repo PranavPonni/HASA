@@ -1,0 +1,4 @@
+Symlinking /home/handlingteam2/HASA/ros_ws/devel/lib/pkgconfig/allegro_package.pc
+Symlinking /home/handlingteam2/HASA/ros_ws/devel/lib/python3/dist-packages/allegro_package/__init__.py
+Symlinking /home/handlingteam2/HASA/ros_ws/devel/share/allegro_package/cmake/allegro_packageConfig-version.cmake
+Symlinking /home/handlingteam2/HASA/ros_ws/devel/share/allegro_package/cmake/allegro_packageConfig.cmake

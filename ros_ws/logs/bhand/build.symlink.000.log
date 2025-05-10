@@ -1,0 +1,4 @@
+Symlinking /home/handlingteam2/HASA/ros_ws/devel/lib/libBHand.so
+Symlinking /home/handlingteam2/HASA/ros_ws/devel/lib/pkgconfig/bhand.pc
+Symlinking /home/handlingteam2/HASA/ros_ws/devel/share/bhand/cmake/bhandConfig.cmake
+Symlinking /home/handlingteam2/HASA/ros_ws/devel/share/bhand/cmake/bhandConfig-version.cmake

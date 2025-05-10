@@ -1,0 +1,4 @@
+xela_package/xela_bringup
+/home/handlingteam2/HASA/ros_ws/devel/.private/xela_bringup/lib/pkgconfig/xela_bringup.pc /home/handlingteam2/HASA/ros_ws/devel/lib/pkgconfig/xela_bringup.pc
+/home/handlingteam2/HASA/ros_ws/devel/.private/xela_bringup/share/xela_bringup/cmake/xela_bringupConfig-version.cmake /home/handlingteam2/HASA/ros_ws/devel/share/xela_bringup/cmake/xela_bringupConfig-version.cmake
+/home/handlingteam2/HASA/ros_ws/devel/.private/xela_bringup/share/xela_bringup/cmake/xela_bringupConfig.cmake /home/handlingteam2/HASA/ros_ws/devel/share/xela_bringup/cmake/xela_bringupConfig.cmake

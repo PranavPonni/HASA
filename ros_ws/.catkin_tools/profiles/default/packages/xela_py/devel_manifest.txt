@@ -1,0 +1,5 @@
+xela_package/xela_py
+/home/handlingteam2/HASA/ros_ws/devel/.private/xela_py/lib/pkgconfig/xela_py.pc /home/handlingteam2/HASA/ros_ws/devel/lib/pkgconfig/xela_py.pc
+/home/handlingteam2/HASA/ros_ws/devel/.private/xela_py/lib/python3/dist-packages/xela_py/__init__.py /home/handlingteam2/HASA/ros_ws/devel/lib/python3/dist-packages/xela_py/__init__.py
+/home/handlingteam2/HASA/ros_ws/devel/.private/xela_py/share/xela_py/cmake/xela_pyConfig.cmake /home/handlingteam2/HASA/ros_ws/devel/share/xela_py/cmake/xela_pyConfig.cmake
+/home/handlingteam2/HASA/ros_ws/devel/.private/xela_py/share/xela_py/cmake/xela_pyConfig-version.cmake /home/handlingteam2/HASA/ros_ws/devel/share/xela_py/cmake/xela_pyConfig-version.cmake

@@ -1,0 +1,4 @@
+[35m[1mScanning dependencies of target allegro_hand_keyboard[0m
+[ 50%] [32mBuilding CXX object CMakeFiles/allegro_hand_keyboard.dir/src/allegro_hand_keyboard.cpp.o[0m
+[100%] [32m[1mLinking CXX executable /home/handlingteam2/HASA/ros_ws/devel/.private/allegro_hand_keyboard/lib/allegro_hand_keyboard/allegro_hand_keyboard[0m
+[100%] Built target allegro_hand_keyboard

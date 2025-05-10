@@ -1,0 +1,4 @@
+Symlinking /home/handlingteam2/HASA/ros_ws/devel/lib/pkgconfig/xela_py.pc
+Symlinking /home/handlingteam2/HASA/ros_ws/devel/lib/python3/dist-packages/xela_py/__init__.py
+Symlinking /home/handlingteam2/HASA/ros_ws/devel/share/xela_py/cmake/xela_pyConfig.cmake
+Symlinking /home/handlingteam2/HASA/ros_ws/devel/share/xela_py/cmake/xela_pyConfig-version.cmake

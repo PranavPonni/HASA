@@ -1,0 +1,5 @@
+[35m[1mScanning dependencies of target allegro_hand_driver[0m
+[ 66%] [32mBuilding CXX object CMakeFiles/allegro_hand_driver.dir/src/candrv/pcan.cpp.o[0m
+[ 66%] [32mBuilding CXX object CMakeFiles/allegro_hand_driver.dir/src/AllegroHandDrv.cpp.o[0m
+[100%] [32m[1mLinking CXX shared library /home/handlingteam2/HASA/ros_ws/devel/.private/allegro_hand_driver/lib/liballegro_hand_driver.so[0m
+[100%] Built target allegro_hand_driver

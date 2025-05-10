@@ -1,0 +1,21 @@
+[  0%] Built target geometry_msgs_generate_messages_nodejs
+[  0%] Built target std_msgs_generate_messages_nodejs
+[  0%] Built target geometry_msgs_generate_messages_cpp
+[  0%] Built target std_msgs_generate_messages_lisp
+[  0%] Built target std_msgs_generate_messages_py
+[  0%] Built target geometry_msgs_generate_messages_py
+[  0%] Built target std_msgs_generate_messages_eus
+[  0%] Built target geometry_msgs_generate_messages_eus
+[  0%] Built target geometry_msgs_generate_messages_lisp
+[  0%] Built target std_msgs_generate_messages_cpp
+[  0%] Built target _xela_server_ros_generate_messages_check_deps_Taxel
+[  0%] Built target _xela_server_ros_generate_messages_check_deps_XelaSensorStream
+[  0%] Built target _xela_server_ros_generate_messages_check_deps_SensStream
+[  0%] Built target _xela_server_ros_generate_messages_check_deps_SensorFull
+[  0%] Built target _xela_server_ros_generate_messages_check_deps_Forces
+[ 64%] Built target xela_server_ros_generate_messages_lisp
+[ 64%] Built target xela_server_ros_generate_messages_nodejs
+[ 82%] Built target xela_server_ros_generate_messages_eus
+[ 82%] Built target xela_server_ros_generate_messages_py
+[100%] Built target xela_server_ros_generate_messages_cpp
+[100%] Built target xela_server_ros_generate_messages

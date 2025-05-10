@@ -1,0 +1,4 @@
+Symlinking /home/handlingteam2/HASA/ros_ws/devel/lib/pkgconfig/py_node_exec.pc
+Symlinking /home/handlingteam2/HASA/ros_ws/devel/lib/python3/dist-packages/py_node_exec/__init__.py
+Symlinking /home/handlingteam2/HASA/ros_ws/devel/share/py_node_exec/cmake/py_node_execConfig.cmake
+Symlinking /home/handlingteam2/HASA/ros_ws/devel/share/py_node_exec/cmake/py_node_execConfig-version.cmake

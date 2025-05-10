@@ -1,0 +1,24 @@
+[35m[1mScanning dependencies of target allegro_node[0m
+[  8%] [32mBuilding CXX object CMakeFiles/allegro_node.dir/src/allegro_node.cpp.o[0m
+[ 16%] [32m[1mLinking CXX shared library /home/handlingteam2/HASA/ros_ws/devel/.private/allegro_hand_controllers/lib/liballegro_node.so[0m
+[ 16%] Built target allegro_node
+[35m[1mScanning dependencies of target allegro_node_torque[0m
+[35m[1mScanning dependencies of target allegro_node_pd[0m
+[35m[1mScanning dependencies of target allegro_node_grasp[0m
+[35m[1mScanning dependencies of target allegro_node_sim[0m
+[35m[1mScanning dependencies of target allegro_node_velsat[0m
+[ 25%] [32mBuilding CXX object CMakeFiles/allegro_node_torque.dir/src/allegro_node_torque.cpp.o[0m
+[ 33%] [32mBuilding CXX object CMakeFiles/allegro_node_sim.dir/src/allegro_node_sim.cpp.o[0m
+[ 41%] [32mBuilding CXX object CMakeFiles/allegro_node_pd.dir/src/allegro_node_pd.cpp.o[0m
+[ 50%] [32mBuilding CXX object CMakeFiles/allegro_node_velsat.dir/src/allegro_node_velsat.cpp.o[0m
+[ 58%] [32mBuilding CXX object CMakeFiles/allegro_node_grasp.dir/src/allegro_node_grasp.cpp.o[0m
+[ 66%] [32m[1mLinking CXX executable /home/handlingteam2/HASA/ros_ws/devel/.private/allegro_hand_controllers/lib/allegro_hand_controllers/allegro_node_sim[0m
+[ 66%] Built target allegro_node_sim
+[ 75%] [32m[1mLinking CXX executable /home/handlingteam2/HASA/ros_ws/devel/.private/allegro_hand_controllers/lib/allegro_hand_controllers/allegro_node_torque[0m
+[ 83%] [32m[1mLinking CXX executable /home/handlingteam2/HASA/ros_ws/devel/.private/allegro_hand_controllers/lib/allegro_hand_controllers/allegro_node_pd[0m
+[ 83%] Built target allegro_node_torque
+[ 91%] [32m[1mLinking CXX executable /home/handlingteam2/HASA/ros_ws/devel/.private/allegro_hand_controllers/lib/allegro_hand_controllers/allegro_node_velsat[0m
+[ 91%] Built target allegro_node_pd
+[100%] [32m[1mLinking CXX executable /home/handlingteam2/HASA/ros_ws/devel/.private/allegro_hand_controllers/lib/allegro_hand_controllers/allegro_node_grasp[0m
+[100%] Built target allegro_node_velsat
+[100%] Built target allegro_node_grasp
