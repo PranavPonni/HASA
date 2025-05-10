@@ -1,7 +1,7 @@
 **/devel/
 **/build/
 **/log/
-**/.catkin_tools
+**/.catkin_tools/
 
 __pycache__/
 *.py[cod]
@@ -17,12 +17,3 @@ __pycache__/
 *.tmp
 
 .vscode/
-.idea/
-
-.venv/
-venv/
-env/
-ENV/
-
-.DS_Store
-Thumbs.db
