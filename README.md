@@ -12,7 +12,7 @@ Navigate to your `ros_ws` directory and build the ROS packages:
 ```bash
 cd ~/ros_ws
 catkin build
-source source_hasa
+source_hasa
 ````
 
 > ✅ **Always work inside** `user/{your_name}` directory.
