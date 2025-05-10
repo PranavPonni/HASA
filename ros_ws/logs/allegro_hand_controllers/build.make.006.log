@@ -1,6 +1,0 @@
-[ 16%] Built target allegro_node
-[ 33%] Built target allegro_node_torque
-[ 66%] Built target allegro_node_grasp
-[ 66%] Built target allegro_node_sim
-[100%] Built target allegro_node_pd
-[100%] Built target allegro_node_velsat

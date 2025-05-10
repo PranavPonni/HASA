@@ -1,5 +1,0 @@
-allegro_hand_packages/allegro_hand_description
-/home/handlingteam2/HASA/ros_ws/devel/.private/allegro_hand_description/lib/pkgconfig/allegro_hand_description.pc /home/handlingteam2/HASA/ros_ws/devel/lib/pkgconfig/allegro_hand_description.pc
-/home/handlingteam2/HASA/ros_ws/devel/.private/allegro_hand_description/lib/allegro_hand_description/detect_pcan.py /home/handlingteam2/HASA/ros_ws/devel/lib/allegro_hand_description/detect_pcan.py
-/home/handlingteam2/HASA/ros_ws/devel/.private/allegro_hand_description/share/allegro_hand_description/cmake/allegro_hand_descriptionConfig-version.cmake /home/handlingteam2/HASA/ros_ws/devel/share/allegro_hand_description/cmake/allegro_hand_descriptionConfig-version.cmake
-/home/handlingteam2/HASA/ros_ws/devel/.private/allegro_hand_description/share/allegro_hand_description/cmake/allegro_hand_descriptionConfig.cmake /home/handlingteam2/HASA/ros_ws/devel/share/allegro_hand_description/cmake/allegro_hand_descriptionConfig.cmake
