@@ -1,0 +1,7 @@
+#!/bin/bash
+
+for IF in can*; do
+  [ -d /sys/class/net/"$IF" ] || continue
+  echo "Bringing up CAN interface: $IF"
+  sudo ip link set dev "$IF" type can bitrate 1000000 restart-sec 100ms up
+done
