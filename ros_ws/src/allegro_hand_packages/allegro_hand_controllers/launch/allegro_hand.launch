@@ -72,10 +72,15 @@
   <!-- <param name="robot_description"
           command="cat $(find allegro_hand_description)/allegro_hand_description_$(arg HAND).urdf"/>  -->
 
-  <param name="robot_description"
+  <!-- <param name="robot_description"
          command="$(find xacro)/xacro
-                  $(find allegro_hand_description)/allegro_hand_description_$(arg HAND).xacro"/> 
+                  $(find allegro_hand_description)/allegro_hand_description_$(arg HAND).xacro"/>  -->
 
+  <arg name="URDF_FILE"
+     default="$(find allegro_hand_description)/allegro_hand_description_$(arg HAND).urdf"/>
+
+  <param name="robot_description"
+     textfile="$(arg URDF_FILE)"/>
 
   <!-- Allegro Hand controller and communication node. -->
   <node name="allegroHand_$(arg HAND)_$(arg NUM)"
@@ -119,12 +124,13 @@
 
   
   <!-- NOTE: The joint_state_publisher is actually commanding *desired* joint angles. -->
-  <node name="joint_states_$(arg NUM)" pkg="joint_state_publisher" type="joint_state_publisher"
-        if="$(arg JSP_GUI)">
-    <remap from="joint_states" to="allegroHand_$(arg NUM)/joint_cmd"/>
-    <param name="use_gui" value="true"/>
+  <node name="joint_state_publisher_gui_$(arg NUM)"
+      pkg="joint_state_publisher_gui"
+      type="joint_state_publisher_gui"
+      if="$(arg JSP_GUI)">
+     <remap from="joint_states"
+          to="allegroHand_$(arg NUM)/joint_cmd"/>
   </node>
-
 
   <!-- Joint States (angles) to Joint Transforms -->
   <node name="jointState2tf_$(arg NUM)"

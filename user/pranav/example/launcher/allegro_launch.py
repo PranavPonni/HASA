@@ -45,15 +45,13 @@ def main():
 
     for name, params in cfg.items():
         hand = params.get("hand_type")
-        rviz = params.get("rviz")
-        slidebar = params.get("slidebar")
         if not hand:
             print(f"Skipping '{name}': no 'hand_type' specified.")
             continue
 
         cmd = [
             "roslaunch", "allegro_hand_controllers", "allegro_hand.launch",
-            f"HAND:={hand}", f"VISUALIZE:={rviz}", f"JSP_GUI:={slidebar}"
+            f"HAND:={hand}"
         ]
         print(f"Launching '{name}' (HAND={hand}): {' '.join(cmd)}")
         p = subprocess.Popen(cmd, preexec_fn=os.setsid)
