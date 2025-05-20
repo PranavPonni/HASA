@@ -1,53 +1,37 @@
 from py_node_exec import NodeExec
 from xela_py import TactileSubscriber
-import numpy as np
-import matplotlib.pyplot as plt
 import time
+import numpy as np
 
 if __name__ == "__main__":
-    node = NodeExec(freq=10)  # Faster update for better visualization
+    node = NodeExec(freq=0.1)
     node.spin_thread_start()
+    index = TactileSubscriber(topic_prefix="index_tip")
+    middle = TactileSubscriber(topic_prefix="middle_tip")
+    ring = TactileSubscriber(topic_prefix="ring_tip")
+    thumb = TactileSubscriber(topic_prefix="thumb_tip")
 
-    # Create a subscriber for each fingertip
-    fingertips = {
-        "thumb": TactileSubscriber(topic_prefix="thumb_tip"),
-        "index": TactileSubscriber(topic_prefix="index_tip"),
-        "middle": TactileSubscriber(topic_prefix="middle_tip"),
-        "ring": TactileSubscriber(topic_prefix="ring_tip")
-    }
+    print("Start real-time tactile data acquisition. Move the hand freely.")
+    time.sleep(1)
 
-    # Create the figure and axes for visualization
-    fig, axs = plt.subplots(1, 4, figsize=(12, 3))
-    fig.suptitle("Real-Time Tactile Sensor Readings")
+    # print("Index tip tactile data:")
+    # while node.ok():
+    #     print(index.get_obs())
+    #     node.sleep()
 
-    # Initialize plots
-    images = {}
-    for i, finger in enumerate(fingertips.keys()):
-        axs[i].set_title(finger.capitalize())
-        axs[i].axis('off')  # Hide axis
-        # Initialize with a 4x4 grid of zeros
-        images[finger] = axs[i].imshow(np.zeros((4, 4)), cmap='viridis', vmin=0, vmax=1)
+    print("Thumb tip tactile data:")
+    while node.ok():
+        print(thumb.get_obs())
+        node.sleep()
 
-    plt.tight_layout()
+    # print("Ring tip tactile data:")
+    # while node.ok():
+    #     print(ring.get_obs())
+    #     node.sleep()
 
-    try:
-        while node.ok():
-            # Get latest tactile data
-            obs = {finger: sub.get_obs() for finger, sub in fingertips.items()}
-
-            # Update each finger's plot
-            for finger, data in obs.items():
-                if data is not None and len(data) == 16:
-                    grid = np.array(data).reshape(4, 4)  # Reshape to 4x4 grid
-                    images[finger].set_data(grid)
-                    images[finger].set_clim(vmin=np.min(grid), vmax=np.max(grid))  # Adjust color scale
-
-            plt.pause(0.01)
-            node.sleep()
-
-    except KeyboardInterrupt:
-        print("Interrupted by user")
-
-    finally:
-        node.spin_thread_finish()
-        plt.close()
+    # print("Middle tip tactile data:")
+    # while node.ok():
+    #     print(middle.get_obs())
+    #     node.sleep()
+        
+    node.spin_thread_finish()
