@@ -1,5 +1,5 @@
 allegro_hand:
   hand_type: left
-  rviz: false
-  slidebar: true
+  rviz: true
+  slidebar: false
   

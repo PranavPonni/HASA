@@ -20,13 +20,16 @@ class AllegroPrecesionGrasp(AlgoTeleop):
         self.wall_kp = wall_kp
         self.leader_state = None
         self._lock = Lock()
+
+    def wrap_to_pi(self,angle):
+        return (angle + np.pi) % (2 * np.pi) - np.pi
     
     def set_follower_state(self, follower_state):
         pass
 
     def set_leader_state(self, leader_state):
         leader_state = np.array(leader_state, dtype=float)
-        self.leader_state = leader_state * self.directions + self.offsets
+        self.leader_state = self.wrap_to_pi(leader_state * self.directions + self.offsets)
 
     def calc_follower(self):
         if self.leader_state is None:
