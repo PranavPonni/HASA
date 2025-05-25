@@ -1,23 +1,23 @@
 index_tip:
   enable: True
-  config: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/config/index.ini
+  config: /etc/xela/index.ini
   ip: 127.0.0.1
   port: 5050
 
 middle_tip:
   enable: True
-  config: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/config/middle.ini
+  config: /etc/xela/middle.ini
   ip: 127.0.0.1
   port: 5100
 
-thumb_tip:
-  enable: True
-  config: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/config/thumb.ini
-  ip: 127.0.0.1
-  port: 5000
-
 ring_tip:
   enable: True
-  config: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/config/ring.ini
+  config: /etc/xela/ring.ini
   ip: 127.0.0.1
   port: 5150
+
+thumb_tip:
+  enable: True
+  config: /etc/xela/thumb.ini
+  ip: 127.0.0.1
+  port: 5000

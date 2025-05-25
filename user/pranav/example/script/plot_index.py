@@ -2,7 +2,6 @@
 from py_node_exec import NodeExec
 from xela_py import TactileSubscriber
 from std_msgs.msg import Float64MultiArray
-import rospy
 import time
 import numpy as np
 
@@ -12,24 +11,29 @@ if __name__ == "__main__":
 
     # Initialize Tactile Subscribers
     index = TactileSubscriber(topic_prefix="index_tip")
-    middle = TactileSubscriber(topic_prefix="middle_tip")
-    ring = TactileSubscriber(topic_prefix="ring_tip")
     thumb = TactileSubscriber(topic_prefix="thumb_tip")
 
-    # Initialize ROS publisher
-    pub = rospy.Publisher("/tactile/index_tip", Float64MultiArray, queue_size=10)
+    # print("Publishing Index Finger Tactile Data for PlotJuggler...")
 
-    print("Publishing Index Finger Tactile Data for PlotJuggler...")
+    # time.sleep(1)
+
+    # while node.ok():
+    #     # Get tactile observation from index finger
+    #     data = index.get_obs()  # This should be a numpy array
+    #     print(data)
+    #     node.sleep()
+
+    print("Publishing Thumb Finger Tactile Data for PlotJuggler...")
 
     time.sleep(1)
 
     while node.ok():
-        # Get tactile observation from index finger
-        data = index.get_obs()  # This should be a numpy array
-        if data is not None:
-            msg = Float64MultiArray()
-            msg.data = data.flatten().tolist()  # Flatten in case it's 2D
-            pub.publish(msg)
+        # Get tactile observation from thumb finger
+        data = thumb.get_obs()  # This should be a numpy array
+        print(data)
         node.sleep()
+
+
+
 
     node.spin_thread_finish()
