@@ -9,9 +9,9 @@ from py_node_exec import NodeExec
 from xela_py import TactileSubscriber
 
 class XelaVisualizer:
-    def __init__(self, topic_prefix="index_tip", freq=10):
-        self.node = NodeExec(node_name=topic_prefix+"_vis_node",freq=freq)
-        self.index = TactileSubscriber(topic_prefix=topic_prefix)
+    def __init__(self, topic_prefix="thumb_tip", freq=10):
+        self.node = NodeExec(freq=freq)
+        self.thumb = TactileSubscriber(topic_prefix=topic_prefix)
 
         self.remapped_coords = [
             (5, 3), (5, 2), (5, 1), (5, 0),
@@ -36,7 +36,7 @@ class XelaVisualizer:
 
     def setup_gui(self):
         self.root = tk.Tk()
-        self.root.title("XELA Index Tip Tactile Heatmap")
+        self.root.title("XELA Thumb Tip Tactile Heatmap")
 
         self.fig, self.ax = plt.subplots(figsize=(6, 6))
         self.fig.patch.set_facecolor('black')
@@ -65,7 +65,7 @@ class XelaVisualizer:
         self.ax.set_xticks([])
         self.ax.set_yticks([])
         self.ax.set_aspect('equal')
-        self.ax.set_title("XELA Index Tip Heatmap", color='white', fontsize=10)
+        self.ax.set_title("XELA Thumb Tip Heatmap", color='white', fontsize=10)
         for spine in self.ax.spines.values():
             spine.set_visible(False)
 
@@ -87,7 +87,7 @@ class XelaVisualizer:
         if not self.node.ok():
             return self.sc, self.quiver, *self.text_labels
 
-        obs = np.array(self.index.get_obs())
+        obs = np.array(self.thumb.get_obs())
         if obs.shape != (30, 3):
             print("Invalid tactile shape:", obs.shape)
             return self.sc, self.quiver, *self.text_labels

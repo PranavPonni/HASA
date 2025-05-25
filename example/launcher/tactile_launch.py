@@ -55,7 +55,7 @@ def main():
         ]
         print(f"Launching namespace `{ns}`: {' '.join(cmd)}")
         p = subprocess.Popen(cmd, preexec_fn=os.setsid)
-        time.sleep(2)
+        time.sleep(3)
         procs.append(p)
 
     for p in procs:

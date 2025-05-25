@@ -5,6 +5,7 @@ import signal
 import subprocess
 import argparse
 import yaml
+import time
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -54,6 +55,7 @@ def main():
         ]
         print(f"Launching namespace `{ns}`: {' '.join(cmd)}")
         p = subprocess.Popen(cmd, preexec_fn=os.setsid)
+        time.sleep(3)
         procs.append(p)
 
     for p in procs:
