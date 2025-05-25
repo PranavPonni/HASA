@@ -17,24 +17,18 @@ robot = AllegroHand(hand_topic_prefix="allegroHand_0", ctrl_freq=5)
 index = TactileSubscriber(topic_prefix="index_tip")
 
 # ---- Taxel layout ----
-x_coords = np.array([
-     0, 1, 2, 3, 4, 5,  # 0–5
-     0, 1, 2, 3, 4, 5,  # 6–11
-     0, 1, 2, 3, 4, 5,  # 12–17
-     0, 1, 2, 3, 4, 5,  # 18–23
-        1, 2, 3, 4,     # 24–27
-           2, 3         # 28–29
-])
+remapped_coords = [
+    (5, 3), (5, 2), (5, 1), (5, 0),
+    (4, 4), (4, 3), (4, 2), (4, 1), (4, 0),
+    (3, 5), (3, 4), (3, 3), (3, 2), (3, 1), (3, 0),
+    (2, 5), (2, 4), (2, 3), (2, 2), (2, 1), (2, 0),
+    (1, 4), (1, 3), (1, 2), (1, 1), (1, 0),
+    (0, 3), (0, 2), (0, 1), (0, 0)
+]
 
-y_coords = np.array([
-    0, 0, 0, 0, 0, 0,   # 0–5
-    1, 1, 1, 1, 1, 1,   # 6–11
-    2, 2, 2, 2, 2, 2,   # 12–17
-    3, 3, 3, 3, 3, 3,   # 18–23
-       4, 4, 4, 4,      # 24–27
-          5, 5          # 28–29
-])
-
+x_coords, y_coords = zip(*remapped_coords)
+x_coords = np.array(x_coords)
+y_coords = np.array(y_coords)
 
 assert len(x_coords) == 30 and len(y_coords) == 30
 
@@ -47,11 +41,15 @@ fig.patch.set_facecolor('black')
 ax.set_facecolor('black')
 
 magnitudes = np.zeros(30)
+vectors = np.zeros((30, 2))  # (x, y) vector components
 
 # Color magnitude visualization
 sc = ax.scatter(x_coords, y_coords, c=magnitudes, cmap='plasma', s=1000, edgecolors='lime', linewidths=0.5)
 
-# --- Removed arrow vectors ---
+# Arrows (quiver plot)
+quiver = ax.quiver(x_coords, y_coords, vectors[:, 0], vectors[:, 1],
+                   angles='xy', scale_units='xy', scale=50000,
+                   color='cyan', width=0.01)
 
 # Colorbar setup
 cbar = plt.colorbar(sc, ax=ax)
@@ -88,12 +86,19 @@ canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 # ---- Update function ----
 def update(frame):
     if not node.ok():
-        return sc, *text_labels
+        return sc, quiver, *text_labels
 
     obs = np.array(index.get_obs())
     if obs.shape != (30, 3):
         print("Invalid tactile shape:", obs.shape)
-        return sc, *text_labels
+        return sc, quiver, *text_labels
+    
+    # Extract raw force vectors
+    vectors[:, 0] = obs[:, 0]  # Fx
+    vectors[:, 1] = obs[:, 1]  # Fy
+
+    # Update quiver arrows
+    quiver.set_UVC(vectors[:, 0], vectors[:, 1])
 
     # Compute raw magnitude (norm of Fx, Fy, Fz)
     raw_magnitudes = np.linalg.norm(obs, axis=1)
@@ -101,17 +106,18 @@ def update(frame):
     # Normalize magnitudes to [0, 1]
     max_val = 100000  
     norm_magnitudes = raw_magnitudes / max_val
-    clipped_magnitudes = np.clip(norm_magnitudes, 0.65, 0.70)
+    clipped_magnitudes = np.clip(norm_magnitudes, 0.670, 0.675)
 
     # Update scatter colors
     sc.set_array(clipped_magnitudes)
-    sc.set_clim(0.65, 0.70)
+    sc.set_clim(0.670, 0.675)
 
     # Update label text to show clipped normalized magnitude
     for i, val in enumerate(clipped_magnitudes):
         text_labels[i].set_text(f"{val:.2f}")
 
-    return sc, *text_labels
+    return sc, quiver, *text_labels
+
 
 # ---- ROS + GUI Loop ----
 def ros_loop():

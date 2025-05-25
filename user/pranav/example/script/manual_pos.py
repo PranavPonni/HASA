@@ -17,3 +17,4 @@ joint_positions = np.array([-0.4,1.2,0.8,1.2, #index
                             0.0,0.0,0.0,0.0, #ring
                             1.0,0.0,0.4,1.5]) #thumb
 hand.command_joint_position(joint_positions)
+
