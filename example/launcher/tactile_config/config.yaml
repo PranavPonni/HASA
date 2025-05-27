@@ -1,23 +1,23 @@
 index_tip:
-  enable: False
+  enable: True
   config: /etc/xela/index.ini
   ip: 127.0.0.1
-  port: 5030
+  port: 5050
 
 middle_tip:
-  enable: False
+  enable: True
   config: /etc/xela/middle.ini
   ip: 127.0.0.1
-  port: 5051
+  port: 5100
 
 ring_tip:
-  enable: False
+  enable: True
   config: /etc/xela/ring.ini
   ip: 127.0.0.1
-  port: 5052
+  port: 5150
 
 thumb_tip:
   enable: True
   config: /etc/xela/thumb.ini
   ip: 127.0.0.1
-  port: 5053
+  port: 5000

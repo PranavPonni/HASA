@@ -98,10 +98,10 @@ class XelaVisualizer:
 
         raw_magnitudes = np.linalg.norm(obs, axis=1)
         norm_magnitudes = raw_magnitudes / 100000
-        clipped_magnitudes = np.clip(norm_magnitudes, 0.670, 0.675)
+        clipped_magnitudes = np.clip(norm_magnitudes, 0.675, 0.680)
 
         self.sc.set_array(clipped_magnitudes)
-        self.sc.set_clim(0.670, 0.675)
+        self.sc.set_clim(0.675, 0.680)
 
         for i, val in enumerate(clipped_magnitudes):
             self.text_labels[i].set_text(f"{val:.2f}")

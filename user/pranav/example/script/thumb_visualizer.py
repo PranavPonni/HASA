@@ -10,7 +10,7 @@ from xela_py import TactileSubscriber
 
 class XelaVisualizer:
     def __init__(self, topic_prefix="thumb_tip", freq=10):
-        self.node = NodeExec(freq=freq)
+        self.node = NodeExec(node_name=topic_prefix+"_vis_node",freq=freq)
         self.thumb = TactileSubscriber(topic_prefix=topic_prefix)
 
         self.remapped_coords = [
@@ -19,7 +19,7 @@ class XelaVisualizer:
             (3, 5), (3, 4), (3, 3), (3, 2), (3, 1), (3, 0),
             (2, 5), (2, 4), (2, 3), (2, 2), (2, 1), (2, 0),
             (1, 4), (1, 3), (1, 2), (1, 1), (1, 0),
-            (0, 3), (0, 2), (0, 1), (0, 0)
+            (0, 3), (0, 0), (0, 1), (0, 2)
         ]
 
         self.x_coords, self.y_coords = zip(*self.remapped_coords)
@@ -98,10 +98,10 @@ class XelaVisualizer:
 
         raw_magnitudes = np.linalg.norm(obs, axis=1)
         norm_magnitudes = raw_magnitudes / 100000
-        clipped_magnitudes = np.clip(norm_magnitudes, 0.670, 0.675)
+        clipped_magnitudes = np.clip(norm_magnitudes, 0.688, 0.695)
 
         self.sc.set_array(clipped_magnitudes)
-        self.sc.set_clim(0.670, 0.675)
+        self.sc.set_clim(0.688, 0.695)
 
         for i, val in enumerate(clipped_magnitudes):
             self.text_labels[i].set_text(f"{val:.2f}")
