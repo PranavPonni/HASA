@@ -107,6 +107,26 @@ This script subscribes to the tactile data of the **index finger tip** and print
 
 ---
 
-## 5. 💬 Support & Questions
+## 5. 💻 Configuring CAN Bus
+**Open random terminal** – UP all CAN buses:
+
+```bash
+cd HASA/example/launcher
+ip link show
+sudo sh can_up.sh
+```
+If it doesn't work manually up:
+```bash
+sudo ip link set up can0 type can bitrate 1000000
+sudo ip link set up can1 type can bitrate 1000000
+sudo ip link set up can2 type can bitrate 1000000
+sudo ip link set up can3 type can bitrate 1000000
+sudo ip link set up can0
+sudo ip link set up can1
+sudo ip link set up can2
+sudo ip link set up can3
+```
+---
+## 6. 💬 Support & Questions
 
 If you have **any questions**, ask on **Slack** as soon as possible.
