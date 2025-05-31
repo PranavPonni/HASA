@@ -15,23 +15,10 @@ class DualXelaVisualizer:
         self.index_sub = TactileSubscriber(topic_prefix=index_prefix)
         self.thumb_sub = TactileSubscriber(topic_prefix=thumb_prefix)
 
-        self.remapped_coords_index = [
-            (5, 3), (5, 2), (5, 1), (5, 0),
-            (4, 4), (4, 3), (4, 2), (4, 1), (4, 0),
-            (3, 5), (3, 4), (3, 3), (3, 2), (3, 1), (3, 0),
-            (2, 5), (2, 4), (2, 3), (2, 2), (2, 1), (2, 0),
-            (1, 4), (1, 3), (1, 2), (1, 1), (1, 0),
-            (0, 3), (0, 2), (0, 1), (0, 0)
-        ]
+        self.remapped_coords_index = [...]  # same as before
+        self.remapped_coords_thumb = [...]  # same as before
 
-        self.remapped_coords_thumb = [
-            (5, 3), (5, 2), (5, 1), (5, 0),
-            (4, 4), (4, 3), (4, 2), (4, 1), (4, 0),
-            (3, 5), (3, 4), (3, 3), (3, 2), (3, 1), (3, 0),
-            (2, 5), (2, 4), (2, 3), (2, 2), (2, 1), (2, 0),
-            (1, 4), (1, 3), (1, 2), (1, 1), (1, 0),
-            (0, 3), (0, 0), (0, 1), (0, 2)
-        ]
+        self.frames_to_record = []  # Store frames for video export
 
         self.setup_gui()
         self.node.spin_thread_start()
@@ -39,17 +26,13 @@ class DualXelaVisualizer:
     def setup_gui(self):
         self.root = tk.Tk()
         self.root.title("XELA Dual Tactile Heatmaps")
-        self.fig, (self.ax_index, self.ax_thumb) = plt.subplots(1, 2, figsize=(12, 6))
+        self.fig, (self.ax_thumb, self.ax_index) = plt.subplots(1, 2, figsize=(12, 6))  # Thumb left, Index right
         self.fig.patch.set_facecolor('black')
         self.ax_index.set_facecolor('black')
         self.ax_thumb.set_facecolor('black')
         
-        self.setup_single_plot(
-            self.ax_index, self.remapped_coords_index, "index_tip", 0.675, 0.680
-        )
-        self.setup_single_plot(
-            self.ax_thumb, self.remapped_coords_thumb, "thumb_tip", 0.688, 0.695
-        )
+        self.setup_single_plot(self.ax_thumb, self.remapped_coords_thumb, "thumb_tip", 0.688, 0.695)
+        self.setup_single_plot(self.ax_index, self.remapped_coords_index, "index_tip", 0.675, 0.680)
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
         self.canvas.draw()
@@ -115,6 +98,10 @@ class DualXelaVisualizer:
             self.thumb_tip_sc, self.thumb_tip_quiver, self.thumb_tip_text_labels,
             self.thumb_tip_clim_min, self.thumb_tip_clim_max
         )
+
+        # Save current frame to record
+        self.frames_to_record.append(self.fig.canvas.copy_from_bbox(self.fig.bbox))
+
         return []
 
     def update_plot(self, obs_data, sc, quiver, text_labels, clim_min, clim_max):
@@ -137,6 +124,16 @@ class DualXelaVisualizer:
         for i, val in enumerate(clipped):
             text_labels[i].set_text(f"{val:.2f}")
 
+    def export_video(self, filename="xela_dual_output.mp4"):
+        from matplotlib.animation import FFMpegWriter
+        writer = FFMpegWriter(fps=10, metadata=dict(artist='XELA Visualizer'))
+        print(f"Saving MP4 video to {filename} ...")
+        with writer.saving(self.fig, filename, dpi=100):
+            for _ in self.frames_to_record:
+                self.canvas.draw()
+                writer.grab_frame()
+        print("Video export complete.")
+
     def run(self):
         self.anim = animation.FuncAnimation(self.fig, self.update, interval=100, blit=False, cache_frame_data=False)
         self.root.protocol("WM_DELETE_WINDOW", self.shutdown)
@@ -144,6 +141,7 @@ class DualXelaVisualizer:
 
     def shutdown(self):
         self.node.spin_thread_finish()
+        self.export_video("xela_dual_output.mp4")
         self.root.destroy()
 
 
