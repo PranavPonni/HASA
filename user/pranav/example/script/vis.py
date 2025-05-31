@@ -1,19 +1,13 @@
-import rospy
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.animation as animation
 import tkinter as tk
 
-from py_node_exec import NodeExec
-from xela_py import TactileSubscriber
-
-
 class DualXelaVisualizer:
-    def __init__(self, index_prefix="index_tip", thumb_prefix="thumb_tip", freq=10):
-        self.node = NodeExec(node_name="dual_xela_vis_node", freq=freq)
-        self.index_sub = TactileSubscriber(topic_prefix=index_prefix)
-        self.thumb_sub = TactileSubscriber(topic_prefix=thumb_prefix)
+    def __init__(self):
+        self.index_obs = np.zeros((30, 3))
+        self.thumb_obs = np.zeros((30, 3))
 
         self.remapped_coords_index = [
             (5, 3), (5, 2), (5, 1), (5, 0),
@@ -34,7 +28,6 @@ class DualXelaVisualizer:
         ]
 
         self.setup_gui()
-        self.node.spin_thread_start()
 
     def setup_gui(self):
         self.root = tk.Tk()
@@ -44,12 +37,8 @@ class DualXelaVisualizer:
         self.ax_index.set_facecolor('black')
         self.ax_thumb.set_facecolor('black')
 
-        self.setup_single_plot(
-            self.ax_index, self.remapped_coords_index, "index_tip", 0.673, 0.674
-        )
-        self.setup_single_plot(
-            self.ax_thumb, self.remapped_coords_thumb, "thumb_tip", 0.682, 0.683
-        )
+        self.setup_single_plot(self.ax_index, self.remapped_coords_index, "index_tip", 0.673, 0.674)
+        self.setup_single_plot(self.ax_thumb, self.remapped_coords_thumb, "thumb_tip", 0.682, 0.683)
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
         self.canvas.draw()
@@ -104,31 +93,31 @@ class DualXelaVisualizer:
         setattr(self, f"{tag}_clim_min", clim_min)
         setattr(self, f"{tag}_clim_max", clim_max)
 
+    def set_index_obs(self, obs):
+        self.index_obs = obs
+
+    def set_thumb_obs(self, obs):
+        self.thumb_obs = obs
+
     def update(self, frame):
         self.update_plot(
-            self.index_sub.get_obs(),
+            self.index_obs,
             self.index_tip_sc, self.index_tip_quiver, self.index_tip_text_labels,
             self.index_tip_clim_min, self.index_tip_clim_max
         )
         self.update_plot(
-            self.thumb_sub.get_obs(),
+            self.thumb_obs,
             self.thumb_tip_sc, self.thumb_tip_quiver, self.thumb_tip_text_labels,
             self.thumb_tip_clim_min, self.thumb_tip_clim_max
         )
         return []
 
-    def update_plot(self, obs_data, sc, quiver, text_labels, clim_min, clim_max):
-        if not self.node.ok():
-            return
-
-        obs = np.array(obs_data)
+    def update_plot(self, obs, sc, quiver, text_labels, clim_min, clim_max):
         if obs.shape != (30, 3):
-            print("Invalid tactile shape:", obs.shape)
             return
 
         vectors = obs[:, :2]
         quiver.set_UVC(vectors[:, 0], vectors[:, 1])
-
         magnitudes = np.linalg.norm(obs, axis=1) / 100000
         clipped = np.clip(magnitudes, clim_min, clim_max)
         sc.set_array(clipped)
@@ -137,26 +126,7 @@ class DualXelaVisualizer:
         for i, val in enumerate(clipped):
             text_labels[i].set_text(f"{val:.2f}")
 
-    def export_video(self, filename="xela_dual_output.mp4"):
-        from matplotlib.animation import FFMpegWriter
-        writer = FFMpegWriter(fps=10, metadata=dict(artist='XELA Visualizer'))
-        print(f"Saving MP4 video to {filename} ...")
-        with writer.saving(self.fig, filename, dpi=100):
-            for _ in self.frames_to_record:
-                self.canvas.draw()
-                writer.grab_frame()
-        print("Video export complete.")       
-
     def run(self):
-        self.anim = animation.FuncAnimation(self.fig, self.update, interval=100, blit=False, cache_frame_data=False)
-        self.root.protocol("WM_DELETE_WINDOW", self.shutdown)
+        self.anim = animation.FuncAnimation(self.fig, self.update, interval=100, blit=False)
+        self.root.protocol("WM_DELETE_WINDOW", self.root.destroy)
         self.root.mainloop()
-
-    def shutdown(self):
-        self.node.spin_thread_finish()
-        self.root.destroy()
-
-
-if __name__ == "__main__":
-    visualizer = DualXelaVisualizer()
-    visualizer.run()
