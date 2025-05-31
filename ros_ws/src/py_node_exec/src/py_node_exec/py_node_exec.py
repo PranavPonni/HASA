@@ -5,19 +5,15 @@ class NodeExec:
     def __init__(self, node_name="NodeExec", freq=1000):
         rospy.init_node(node_name)
         self.rate = rospy.Rate(freq)
-        self._running=False
     def spin_thread_start(self):
         self.executor_thread = threading.Thread(target=self.spin)
         self.executor_thread.start()
         
 
     def spin(self):
-        self._running=True
-        while not rospy.is_shutdown() and self._running:
-            time.sleep(0.001)
+        rospy.spin()
 
     def spin_thread_finish(self):
-        self._running=False
         rospy.signal_shutdown('Node finished')
         self.executor_thread.join()
 

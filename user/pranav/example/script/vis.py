@@ -43,12 +43,12 @@ class DualXelaVisualizer:
         self.fig.patch.set_facecolor('black')
         self.ax_index.set_facecolor('black')
         self.ax_thumb.set_facecolor('black')
-        
+
         self.setup_single_plot(
-            self.ax_index, self.remapped_coords_index, "index_tip", 0.675, 0.680
+            self.ax_index, self.remapped_coords_index, "index_tip", 0.673, 0.674
         )
         self.setup_single_plot(
-            self.ax_thumb, self.remapped_coords_thumb, "thumb_tip", 0.688, 0.695
+            self.ax_thumb, self.remapped_coords_thumb, "thumb_tip", 0.682, 0.683
         )
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
@@ -136,6 +136,16 @@ class DualXelaVisualizer:
 
         for i, val in enumerate(clipped):
             text_labels[i].set_text(f"{val:.2f}")
+
+    def export_video(self, filename="xela_dual_output.mp4"):
+        from matplotlib.animation import FFMpegWriter
+        writer = FFMpegWriter(fps=10, metadata=dict(artist='XELA Visualizer'))
+        print(f"Saving MP4 video to {filename} ...")
+        with writer.saving(self.fig, filename, dpi=100):
+            for _ in self.frames_to_record:
+                self.canvas.draw()
+                writer.grab_frame()
+        print("Video export complete.")       
 
     def run(self):
         self.anim = animation.FuncAnimation(self.fig, self.update, interval=100, blit=False, cache_frame_data=False)
