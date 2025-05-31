@@ -19,7 +19,7 @@ MAX_TIMESTEP = 400
 CTRL_FREQ = 20.0
 HAND_TOPIC_PREFIX = "allegroHand_0"
 TACTILE_TOPIC_PREFIXES = ["index_tip", "thumb_tip"]
-BACKGROUND_AUDIO_PATH = "/home/handlingteam2/HASA/user/pranav/example/script/util/pad.wav"
+BACKGROUND_AUDIO_PATH = "/home/handlingteam2/HASA/user/pranav/example/script/util/jazz.mp3"
 
 
 class XelAllegro:
