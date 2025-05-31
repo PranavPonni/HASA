@@ -14,12 +14,12 @@ from allegro_package import AllegroHand
 from xela_py import TactileSubscriber
 from allegro_leader import AllegroPrecesionGrasp
 
-DATA_DIR = "/home/handlingteam2/HASA/example/data/selftouch"
+DATA_DIR = "/home/handlingteam2/HASA/user/pranav/example/data/selftouch"
 MAX_TIMESTEP = 400
 CTRL_FREQ = 20.0
 HAND_TOPIC_PREFIX = "allegroHand_0"
 TACTILE_TOPIC_PREFIXES = ["index_tip", "thumb_tip"]
-BACKGROUND_AUDIO_PATH = "/home/handlingteam2/HASA/example/script/util/beep.mp3"
+BACKGROUND_AUDIO_PATH = "/home/handlingteam2/HASA/user/pranav/example/script/util/pad.wav"
 
 
 class XelAllegro:

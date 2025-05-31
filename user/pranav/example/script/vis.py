@@ -37,8 +37,8 @@ class DualXelaVisualizer:
         self.ax_index.set_facecolor('black')
         self.ax_thumb.set_facecolor('black')
 
-        self.setup_single_plot(self.ax_index, self.remapped_coords_index, "index_tip", 0.673, 0.674)
-        self.setup_single_plot(self.ax_thumb, self.remapped_coords_thumb, "thumb_tip", 0.682, 0.683)
+        self.setup_single_plot(self.ax_index, self.remapped_coords_index, "index_tip", 0.6730, 0.6735)
+        self.setup_single_plot(self.ax_thumb, self.remapped_coords_thumb, "thumb_tip", 0.6820, 0.6825)
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
         self.canvas.draw()
