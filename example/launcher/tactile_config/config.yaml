@@ -17,7 +17,7 @@ ring_tip:
   port: 5150
 
 thumb_tip:
-  enable: False
+  enable: True
   config: /etc/xela/thumb.ini
   ip: 127.0.0.1
   port: 5000
