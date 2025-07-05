@@ -1,0 +1,7 @@
+[01m[K/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_controllers/src/allegro_node.cpp:[m[K In member function ‘[01m[Kvirtual void AllegroNode::updateController()[m[K’:
+[01m[K/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_controllers/src/allegro_node.cpp:150:41:[m[K [01;31m[Kerror: [m[Krequest for member ‘[01m[Ksize[m[K’ in ‘[01m[K((AllegroNode*)this)->AllegroNode::desired_torque[m[K’, which is of non-class type ‘[01m[Kdouble [16][m[K’
+  150 |       for (size_t i=0; i<desired_torque.[01;31m[Ksize[m[K(); i++) {
+      |                                         [01;31m[K^~~~[m[K
+make[2]: *** [CMakeFiles/allegro_node.dir/build.make:63: CMakeFiles/allegro_node.dir/src/allegro_node.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:257: CMakeFiles/allegro_node.dir/all] Error 2
+make: *** [Makefile:141: all] Error 2
