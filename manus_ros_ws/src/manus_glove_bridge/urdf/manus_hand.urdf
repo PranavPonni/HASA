@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<robot name="manus_hand">
+
+  <!-- Root link -->
+  <link name="world"/>
+
+  <!-- Palm -->
+  <link name="palm_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.08 0.06 0.02"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <joint name="world_to_palm" type="fixed">
+    <parent link="world"/>
+    <child link="palm_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Index proximal -->
+  <link name="index_proximal_link">
+    <visual>
+      <origin xyz="0.03 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.06" radius="0.008"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <!-- This joint name MUST match /joint_states name -->
+  <joint name="index_mcp" type="revolute">
+    <parent link="palm_link"/>
+    <child link="index_proximal_link"/>
+    <origin xyz="0.04 0.015 0.0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.57" upper="1.57" effort="1.0" velocity="2.0"/>
+  </joint>
+
+</robot>
