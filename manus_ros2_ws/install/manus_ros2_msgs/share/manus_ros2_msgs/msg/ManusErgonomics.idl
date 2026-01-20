@@ -1,0 +1,14 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from manus_ros2_msgs/msg/ManusErgonomics.msg
+// generated code does not contain a copyright notice
+
+
+module manus_ros2_msgs {
+  module msg {
+    struct ManusErgonomics {
+      string type;
+
+      float value;
+    };
+  };
+};

@@ -1,0 +1,21 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from manus_ros2_msgs/msg/ManusRawNode.msg
+// generated code does not contain a copyright notice
+
+#include "geometry_msgs/msg/Pose.idl"
+
+module manus_ros2_msgs {
+  module msg {
+    struct ManusRawNode {
+      int32 node_id;
+
+      int32 parent_node_id;
+
+      string joint_type;
+
+      string chain_type;
+
+      geometry_msgs::msg::Pose pose;
+    };
+  };
+};

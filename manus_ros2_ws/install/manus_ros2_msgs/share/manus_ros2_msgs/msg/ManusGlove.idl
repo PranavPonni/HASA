@@ -1,0 +1,32 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from manus_ros2_msgs/msg/ManusGlove.msg
+// generated code does not contain a copyright notice
+
+#include "geometry_msgs/msg/Pose.idl"
+#include "geometry_msgs/msg/Quaternion.idl"
+#include "manus_ros2_msgs/msg/ManusErgonomics.idl"
+#include "manus_ros2_msgs/msg/ManusRawNode.idl"
+
+module manus_ros2_msgs {
+  module msg {
+    struct ManusGlove {
+      int32 glove_id;
+
+      string side;
+
+      int32 raw_node_count;
+
+      sequence<manus_ros2_msgs::msg::ManusRawNode> raw_nodes;
+
+      int32 ergonomics_count;
+
+      sequence<manus_ros2_msgs::msg::ManusErgonomics> ergonomics;
+
+      geometry_msgs::msg::Quaternion raw_sensor_orientation;
+
+      int32 raw_sensor_count;
+
+      sequence<geometry_msgs::msg::Pose> raw_sensor;
+    };
+  };
+};
