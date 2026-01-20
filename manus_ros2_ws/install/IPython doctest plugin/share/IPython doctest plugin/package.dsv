@@ -1,0 +1,3 @@
+source;share/IPython doctest plugin/hook/pythonpath.ps1
+source;share/IPython doctest plugin/hook/pythonpath.dsv
+source;share/IPython doctest plugin/hook/pythonpath.sh
