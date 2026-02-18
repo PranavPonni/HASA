@@ -173,6 +173,7 @@ ros2 run ros1_bridge dynamic_bridge
 ```bash
 
 source /opt/ros/foxy/setup.bash
+source ~/HASA/manus_ros2_ws/install/setup.bash
 cd user/pranav/example/GeoRT/
 python3 manus_allegro_control.py -ckpt_tag geort_1 -hand allegro_left
 
