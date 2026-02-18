@@ -127,6 +127,53 @@ sudo ip link set up can2
 sudo ip link set up can3
 ```
 ---
-## 6. 💬 Support & Questions
+## 6. Connecting Manus Glove via GeoRT to Allegro Hand
 
-If you have **any questions**, ask on **Slack** as soon as possible.
+**Open terminal 1** 
+
+```bash
+
+source_hasa
+roscore
+
+```
+
+**Open terminal 2** 
+
+```bash
+
+source_hasa
+cd user/pranav/example/launcher
+python3 allegro_launch.py --config ./allegro_config/config.yaml
+
+```
+
+**Open terminal 3** 
+
+```bash
+
+source /opt/ros/foxy/setup.bash
+source ~/HASA/manus_ros2_ws/install/setup.bash
+ros2 run manus_ros2 manus_data_publisher
+
+```
+
+**Open terminal 4** 
+
+```bash
+
+source /opt/ros/noetic/setup.bash
+source /opt/ros/foxy/setup.bash
+export ROS_MASTER_URI=http://localhost:11311
+ros2 run ros1_bridge dynamic_bridge
+
+```
+**Open terminal 5** 
+
+```bash
+
+source /opt/ros/foxy/setup.bash
+cd user/pranav/example/GeoRT/
+python3 manus_allegro_control.py -ckpt_tag geort_1 -hand allegro_left
+
+```
