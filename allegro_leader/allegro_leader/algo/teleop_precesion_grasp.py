@@ -5,11 +5,11 @@ from allegro_leader.teleop_base import AlgoTeleop
 from allegro_leader.dynamixel.driver import DynamixelDriver
 
 class AllegroPrecesionGrasp(AlgoTeleop):
-    def __init__(self, wall_kp = 0.0):
+    def __init__(self, wall_kp = 0.0, port: str = "/dev/ttyUSB0", baudrate: int = 4000000):
         super().__init__()
         ids = [0, 1, 2, 3, 12, 13, 14, 15]
         types = ["XL330_M077_T"] * len(ids)
-        self.driver = DynamixelDriver(ids, types)
+        self.driver = DynamixelDriver(ids, types, port=port, baudrate=baudrate)
         self.driver.set_torque_mode(False)
         self.directions = np.array([1.,1.,-1.,-1.,-1.,-1.,1.,1.])
         self.offsets = np.array([0.,-np.pi,-np.pi,-np.pi,-np.pi,-np.pi/2,-np.pi,-np.pi,])

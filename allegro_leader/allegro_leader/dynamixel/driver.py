@@ -1,3 +1,5 @@
+import glob
+import os
 from threading import Lock
 from typing import Protocol, Sequence
 
@@ -52,6 +54,25 @@ class DynamixelDriverProtocol(Protocol):
     def close(self): ...
 
 class DynamixelDriver(DynamixelDriverProtocol):
+    @staticmethod
+    def _resolve_port(port: str) -> str:
+        if os.path.exists(port):
+            return port
+
+        candidates = sorted(
+            set(glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*"))
+        )
+        if len(candidates) == 1:
+            fallback = candidates[0]
+            print(f"[Info] Dynamixel port '{port}' not found. Using '{fallback}' instead.")
+            return fallback
+
+        available = ", ".join(candidates) if candidates else "none"
+        raise FileNotFoundError(
+            f"Dynamixel port '{port}' not found. Available serial ports: {available}. "
+            "Set the correct port explicitly if needed."
+        )
+
     def __init__(
         self,
         ids: Sequence[int],
@@ -62,7 +83,9 @@ class DynamixelDriver(DynamixelDriverProtocol):
         self._ids = ids
         self._lock = Lock()
 
-        self._portHandler = PortHandler(port)
+        resolved_port = self._resolve_port(port)
+
+        self._portHandler = PortHandler(resolved_port)
         self._packetHandler = PacketHandler(2.0)
 
         # GroupSyncRead: read current(2) + velocity(4) + position(4) in one transaction
@@ -98,7 +121,7 @@ class DynamixelDriver(DynamixelDriverProtocol):
         try:
             self.set_torque_mode(self._torque_enabled)
         except Exception as e:
-            print(f"port: {port}, {e}")
+            print(f"port: {resolved_port}, {e}")
 
     @property
     def torque_enabled(self) -> bool:
