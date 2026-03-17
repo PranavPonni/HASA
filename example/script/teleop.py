@@ -1,3 +1,26 @@
+import sys
+from pathlib import Path
+
+
+def _bootstrap_local_ros_python_path():
+    """Allow running this script without sourcing ros_ws/devel/setup.bash."""
+    repo_root = Path(__file__).resolve().parents[2]
+    py_ver = f"python{sys.version_info.major}.{sys.version_info.minor}"
+    candidates = [
+        repo_root / "ros_ws" / "devel" / "lib" / py_ver / "dist-packages",
+        repo_root / "ros_ws" / "src" / "py_node_exec" / "src",
+        repo_root / "ros_ws" / "src" / "allegro_package" / "src",
+    ]
+
+    for path in candidates:
+        if path.exists():
+            path_str = str(path)
+            if path_str not in sys.path:
+                sys.path.insert(0, path_str)
+
+
+_bootstrap_local_ros_python_path()
+
 from py_node_exec import NodeExec
 from allegro_package import AllegroHand
 import numpy as np
