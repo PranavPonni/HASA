@@ -126,3 +126,37 @@ sudo ip link set up can1
 sudo ip link set up can2
 sudo ip link set up can3
 ```
+
+---
+
+## 6. 🐳 Docker (MotionLearningWS)
+
+The Docker setup is located in `user/ueno/MotionLearningWS/docker/`.
+
+### Prerequisites
+- NVIDIA GPU with `nvidia-container-toolkit` installed on the host
+- A `wandb.txt` (netrc credentials) file in the `docker/` directory:
+  ```
+  machine api.wandb.ai
+    login user
+    password <your-wandb-api-key>
+  ```
+
+### Build the image
+
+```bash
+cd user/ueno/MotionLearningWS/docker
+docker compose build
+```
+
+### Allow X display forwarding (for GUI apps)
+
+```bash
+xhost +local:docker
+```
+
+### Launch the container
+
+```bash
+docker compose up -d
+```
