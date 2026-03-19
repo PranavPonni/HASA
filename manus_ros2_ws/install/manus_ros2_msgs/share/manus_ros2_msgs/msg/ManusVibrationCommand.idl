@@ -1,0 +1,17 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from manus_ros2_msgs/msg/ManusVibrationCommand.msg
+// generated code does not contain a copyright notice
+
+
+module manus_ros2_msgs {
+  module msg {
+    typedef float float__5[5];
+    @verbatim (language="comment", text=
+      " msg/ManusVibrationCommand.msg")
+    struct ManusVibrationCommand {
+      @verbatim (language="comment", text=
+        " Thumb, Index, Middle, Ring, Pinky")
+      float__5 intensities;
+    };
+  };
+};

@@ -1,0 +1,8 @@
+msg/ManusErgonomics.idl
+msg/ManusErgonomics.msg
+msg/ManusGlove.idl
+msg/ManusGlove.msg
+msg/ManusRawNode.idl
+msg/ManusRawNode.msg
+msg/ManusVibrationCommand.idl
+msg/ManusVibrationCommand.msg
