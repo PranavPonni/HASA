@@ -160,3 +160,53 @@ xhost +local:docker
 ```bash
 docker compose up -d
 ```
+
+## 7. Connecting Manus Glove to Allegro Hand
+
+**Open terminal 1** 
+
+```bash
+
+source_hasa
+roscore
+
+```
+
+**Open terminal 2** 
+
+```bash
+
+source_hasa
+cd user/pranav/example/launcher
+python3 allegro_launch.py --config ./allegro_config/config.yaml
+
+```
+
+**Open terminal 3** 
+
+```bash
+
+source /opt/ros/foxy/setup.bash
+source ~/HASA/manus_ros2_ws/install/setup.bash
+ros2 run manus_ros2 manus_data_publisher
+
+```
+
+**Open terminal 4** 
+
+```bash
+
+source /opt/ros/noetic/setup.bash
+source /opt/ros/foxy/setup.bash
+export ROS_MASTER_URI=http://localhost:11311
+ros2 run ros1_bridge dynamic_bridge
+
+```
+**Open terminal 5** 
+
+```bash
+
+source /opt/ros/foxy/setup.bash
+// to be added inverse kinematics code
+
+```
