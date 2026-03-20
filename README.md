@@ -207,6 +207,6 @@ ros2 run ros1_bridge dynamic_bridge
 ```bash
 
 source /opt/ros/foxy/setup.bash
-// to be added inverse kinematics code
+python3 manusallegro.py
 
 ```
