@@ -159,6 +159,10 @@ xhost +local:docker
 
 ```bash
 docker compose up -d
+
+### Train Commands
+python3 main.py -mode train -param /root/motionlearning/parameter/sat_rnn_pos/parameter_base/parameter_base.yaml
+python3 main.py -mode motion -param /root/motionlearning/parameter/sat_rnn_pos/apricot-sweep-105/parameter.yaml
 ```
 
 ## 7. Connecting Manus Glove to Allegro Hand
