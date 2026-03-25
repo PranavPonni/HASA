@@ -161,7 +161,7 @@ xhost +local:docker
 docker compose up -d
 
 ### Train Commands
-python3 main.py -mode train -param /root/motionlearning/parameter/sat_rnn_pos/parameter_base/parameter_base.yaml
+python3 main.py -mode sweep -param /root/motionlearning/parameter/sat_rnn_pos/parameter_base/parameter_base.yaml
 python3 main.py -mode motion -param /root/motionlearning/parameter/sat_rnn_pos/apricot-sweep-105/parameter.yaml
 ```
 
