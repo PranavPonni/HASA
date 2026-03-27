@@ -211,6 +211,7 @@ ros2 run ros1_bridge dynamic_bridge
 ```bash
 
 source /opt/ros/foxy/setup.bash
+cd user/pranav/example/script/
 python3 manusallegro.py
 
 ```
