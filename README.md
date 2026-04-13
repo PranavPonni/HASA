@@ -111,7 +111,7 @@ This script subscribes to the tactile data of the **index finger tip** and print
 **Open random terminal** – UP all CAN buses:
 
 ```bash
-cd HASA/example/launcher
+cd HASA/user/pranav/example/launcher
 ip link show
 sudo sh can_up.sh
 ```
