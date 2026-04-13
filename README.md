@@ -185,8 +185,16 @@ cd user/pranav/example/launcher
 python3 allegro_launch.py --config ./allegro_config/config.yaml
 
 ```
-
 **Open terminal 3** 
+
+```bash
+
+source_hasa
+cd user/pranav/example/launcher
+python3 tactile_launch.py --config ./tactile_config/config.yaml
+```
+
+**Open terminal 4** 
 
 ```bash
 
@@ -196,7 +204,7 @@ ros2 run manus_ros2 manus_data_publisher
 
 ```
 
-**Open terminal 4** 
+**Open terminal 5** 
 
 ```bash
 
@@ -206,12 +214,22 @@ export ROS_MASTER_URI=http://localhost:11311
 ros2 run ros1_bridge dynamic_bridge
 
 ```
-**Open terminal 5** 
+**Open terminal 6** 
 
 ```bash
 
 source /opt/ros/foxy/setup.bash
 cd user/pranav/example/script/
 python3 manusallegro.py
+
+```
+
+**Open terminal 7** 
+
+```bash
+
+source_hasa
+cd user/pranav/example/script/
+python3 manus_datacollection.py
 
 ```
