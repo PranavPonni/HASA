@@ -111,7 +111,7 @@ This script subscribes to the tactile data of the **index finger tip** and print
 **Open random terminal** – UP all CAN buses:
 
 ```bash
-cd HASA/user/pranav/example/launcher
+cd user/pranav/example/launcher
 ip link show
 sudo sh can_up.sh
 ```
@@ -191,6 +191,8 @@ python3 allegro_launch.py --config ./allegro_config/config.yaml
 
 source_hasa
 cd user/pranav/example/launcher
+ip link show
+sudo sh can_up.sh
 python3 tactile_launch.py --config ./tactile_config/config.yaml
 ```
 
