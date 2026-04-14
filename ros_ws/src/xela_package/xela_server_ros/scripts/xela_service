@@ -449,7 +449,8 @@ def message_parser(msg_obj, msg_no: int = 0):
     values = []
     forces = []
     taxels = msg_obj.get("taxels", -1)
-    data_val = msg_obj.get("data", "").split(",")
+    raw_data = msg_obj.get("data", "")
+    data_val = raw_data if isinstance(raw_data, list) else raw_data.split(",")
     if len(data_val) != 3 * taxels:
         error(f"Taxel count mismatch: {taxels} != {int(len(data_val) / 3)}")
         return None
