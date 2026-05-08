@@ -235,3 +235,21 @@ cd user/pranav/example/script/
 python3 manus_datacollection.py
 
 ```
+
+## 8. Connecting Nova Glove to Allegro Hand (Foxy-Compatible)
+
+SenseGlove's repository targets ROS2 Jazzy, but this workspace uses Foxy.
+Use the Foxy patch/setup helper and runbook below:
+
+```bash
+cd ~/HASA/user/pranav/example/launcher
+bash setup_nova_foxy.sh ~/senseglove_ros_foxy
+```
+
+Then follow:
+
+`user/pranav/example/launcher/NOVA_ALLEGRO_RUNBOOK.md`
+
+Nova bridge script:
+
+`user/pranav/example/script/novaallegro.py`
