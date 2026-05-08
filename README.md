@@ -242,13 +242,13 @@ SenseGlove's repository targets ROS2 Jazzy, but this workspace uses Foxy.
 Use the Foxy patch/setup helper and runbook below:
 
 ```bash
-cd ~/HASA/user/pranav/example/launcher
-bash setup_nova_foxy.sh ~/senseglove_ros_foxy
+cd ~/HASA
+bash setup_nova_foxy.sh
 ```
 
 Then follow:
 
-`user/pranav/example/launcher/NOVA_ALLEGRO_RUNBOOK.md`
+`NOVA_ALLEGRO_RUNBOOK.md`
 
 Nova bridge script:
 
