@@ -71,31 +71,45 @@ Dataset:
   - thumb_middle_episode40
   - index_middle_episode40
 
+  add_selftouch_combo_condition: true
+  add_selftouch_phase_condition: true
 Model:
   # Paper: 8 active joints (4 index + 4 thumb). Current selftouch_all joint streams are 16-wide, so hand_dim stays 16 unless the loader/data are cropped to active joints.
   hand_dim: 16
   use_joint_pos_only: true
   # 30 taxels x 3 axes (Fx,Fy,Fz) per finger = 90
   tactile_dim: 90
-  rec_dim: 192
-  dropout: 0.1
+  rec_dim: 256
+  dropout: 0.04
   model: selftouch_fcn_posveltrq
   input_modalities:
   - hand_jnt_pos
   - hand_jnt_vel
   - hand_jnt_trq
   model_name: selftouch_fcn_posveltrq
-  architecture: encoder_decoder_mlp
-  hidden_dim: 192
+  architecture: context_temporal_mean_residual
+  hidden_dim: 256
   # Encoder: Linear(input_dim->64) GELU Dropout(0.2) Linear(64->128) GELU
-  encoder_dim: 128
+  encoder_dim: 192
   # Decoder: Dropout(0.2) Linear(128->64) GELU Linear(64->188) GELU
-  decoder_dim: 128
+  decoder_dim: 256
   # Decoder projection width; final tactile output = idx(90) + thb(90) + middle(90)
   decoder_out_dim: 256
 
-  temporal_blocks: 2
-  temporal_kernel_size: 7
+  temporal_blocks: 6
+  temporal_kernel_size: 9
+  temporal_dilations: &id001
+  - 1
+  - 2
+  - 4
+  - 8
+  - 16
+  - 1
+  use_combo_condition: true
+  combo_dim: 3
+  use_phase_condition: true
+  phase_dim: 10
+  use_mean_residual_head: true
 Motion:
 
 Required:
@@ -104,98 +118,110 @@ Required:
 
 Test:
   loss_coef:
-    tactile_index_tip: 1.5
-    tactile_thumb_tip: 1.0
-    tactile_middle_tip: 2.5
+    tactile_index_tip: 2.5
+    tactile_thumb_tip: 0.8
+    tactile_middle_tip: 3.0
     tactile_loss: mae
-    tactile_mae_weight: 3.0
-    tactile_raw_l1_weight: 3.0
+    tactile_mae_weight: 4.0
+    tactile_raw_l1_weight: 8.0
     tactile_raw_huber_weight: 1.0
-    tactile_raw_error_loss_scale: 120.0
-    tactile_raw_error_clip: 450.0
-    tactile_raw_huber_beta: 80.0
-    tactile_raw_scale_weight: 0.5
+    tactile_raw_error_loss_scale: 90.0
+    tactile_raw_error_clip: 350.0
+    tactile_raw_huber_beta: 60.0
+    tactile_raw_scale_weight: 0.25
     tactile_raw_scale_clip: 3.0
-    tactile_raw_topk_weight: 0.5
-    tactile_raw_bias_weight: 2.0
-    tactile_raw_timestep_mean_weight: 1.0
-    tactile_raw_taxel_mean_weight: 0.5
-    tactile_raw_mean_loss_scale: 80.0
+    tactile_raw_topk_weight: 1.5
+    tactile_raw_bias_weight: 3.0
+    tactile_raw_timestep_mean_weight: 2.0
+    tactile_raw_taxel_mean_weight: 3.0
+    tactile_raw_mean_loss_scale: 60.0
     tactile_raw_slope_clip_quantile: 0.98
-    tactile_derivative_weight: 0.35
-    tactile_curvature_weight: 0.15
-    tactile_highpass_weight: 0.35
+    tactile_timestep_mean_weight: 2.0
+    tactile_temporal_profile_weight: 1.5
+    tactile_profile_weight: 0.8
+    tactile_centered_profile_weight: 0.5
+    tactile_corr_weight: 0.15
+    tactile_derivative_weight: 0.2
+    tactile_curvature_weight: 0.1
+    tactile_highpass_weight: 0.2
     tactile_highpass_kernel: 9
     tactile_temporal_std_weight: 0.15
     tactile_delta_std_weight: 0.15
     tactile_amplitude_weight: 0.1
-    tactile_taxel_profile_weight: 0.35
-    tactile_spatial_corr_weight: 0.1
-    tactile_topk_ratio: 0.05
+    tactile_taxel_profile_weight: 2.0
+    tactile_spatial_corr_weight: 0.4
+    tactile_peak_weight: 0.2
+    tactile_intensity_weight: 0.2
+    tactile_topk_ratio: 0.12
   model_load_path: 
     /root/motionlearning/model_weight/selftouch_fcn_posveltrq/parameter_base/epoch0.pth
 
 Train:
   # --- Paper Section IV-A: Adam, lr=0.001, batch_size=100, 20000 epochs ---
-  batch_size: 8
-  lr: 8e-05
+  batch_size: 16
+  lr: 0.0002
   lr_schedule:
     milestones:
-    - 1800
-    - 3200
-    - 4600
+    - 250
+    - 400
     factors:
-    - 0.5
-    - 0.25
-    - 0.1
-  model_save_iter: 100
-  eval_every: 20
-  plot_every: 100
+    - 0.35
+    - 0.12
+  model_save_iter: 25
+  eval_every: 25
+  plot_every: 25
   wandb_watch: false
   wandb_watch_log: gradients
   wandb_watch_freq: 100
   wandb_log_images: false
   wandb_save_model: false
   wandb_save_scaling: false
-  num_epochs: 6000
+  num_epochs: 500
   loss_coef:
-    tactile_index_tip: 1.5
-    tactile_thumb_tip: 1.0
-    tactile_middle_tip: 2.5
+    tactile_index_tip: 2.5
+    tactile_thumb_tip: 0.8
+    tactile_middle_tip: 3.0
     tactile_loss: mae
-    tactile_mae_weight: 3.0
-    tactile_raw_l1_weight: 3.0
+    tactile_mae_weight: 4.0
+    tactile_raw_l1_weight: 8.0
     tactile_raw_huber_weight: 1.0
-    tactile_raw_error_loss_scale: 120.0
-    tactile_raw_error_clip: 450.0
-    tactile_raw_huber_beta: 80.0
-    tactile_raw_scale_weight: 0.5
+    tactile_raw_error_loss_scale: 90.0
+    tactile_raw_error_clip: 350.0
+    tactile_raw_huber_beta: 60.0
+    tactile_raw_scale_weight: 0.25
     tactile_raw_scale_clip: 3.0
-    tactile_raw_topk_weight: 0.5
-    tactile_raw_bias_weight: 2.0
-    tactile_raw_timestep_mean_weight: 1.0
-    tactile_raw_taxel_mean_weight: 0.5
-    tactile_raw_mean_loss_scale: 80.0
+    tactile_raw_topk_weight: 1.5
+    tactile_raw_bias_weight: 3.0
+    tactile_raw_timestep_mean_weight: 2.0
+    tactile_raw_taxel_mean_weight: 3.0
+    tactile_raw_mean_loss_scale: 60.0
     tactile_raw_slope_clip_quantile: 0.98
-    tactile_derivative_weight: 0.35
-    tactile_curvature_weight: 0.15
-    tactile_highpass_weight: 0.35
+    tactile_timestep_mean_weight: 2.0
+    tactile_temporal_profile_weight: 1.5
+    tactile_profile_weight: 0.8
+    tactile_centered_profile_weight: 0.5
+    tactile_corr_weight: 0.15
+    tactile_derivative_weight: 0.2
+    tactile_curvature_weight: 0.1
+    tactile_highpass_weight: 0.2
     tactile_highpass_kernel: 9
     tactile_temporal_std_weight: 0.15
     tactile_delta_std_weight: 0.15
     tactile_amplitude_weight: 0.1
-    tactile_taxel_profile_weight: 0.35
-    tactile_spatial_corr_weight: 0.1
-    tactile_topk_ratio: 0.05
+    tactile_taxel_profile_weight: 2.0
+    tactile_spatial_corr_weight: 0.4
+    tactile_peak_weight: 0.2
+    tactile_intensity_weight: 0.2
+    tactile_topk_ratio: 0.12
   project: selftouch_fcn_posveltrq
   wandb_entity: hasa-handresearch-waseda-university
   early_stop_enabled: false
   early_stop_monitor: raw_acc
   early_stop_mode: max
-  early_stop_patience: 3000
+  early_stop_patience: 500
   early_stop_min_delta: 0.5
-  early_stop_min_epochs: 4000
-  eval_batch_size: 16
+  early_stop_min_epochs: 500
+  eval_batch_size: 32
   adamw_foreach: false
   empty_cache_after_save: true
   empty_cache_after_eval: false
@@ -207,8 +233,8 @@ Train:
   zero_output_head_on_bias_init: true
   output_head_init_std: 0.0001
 
-  train_micro_batch_size: 2
-  grad_clip_norm: 1.0
+  train_micro_batch_size: 4
+  grad_clip_norm: 2.0
 Pretrain:
 
 Sweep:
@@ -216,38 +242,56 @@ Sweep:
     Model:
       rec_dim:
         values:
-        - 192
+        - 256
       dropout:
         values:
-        - 0.1
+        - 0.04
       hidden_dim:
         values:
-        - 192
+        - 256
       encoder_dim:
         values:
-        - 128
+        - 192
       decoder_dim:
         values:
-        - 128
+        - 256
       decoder_out_dim:
         values:
         - 256
       temporal_blocks:
         values:
-        - 2
+        - 6
       temporal_kernel_size:
         values:
-        - 7
+        - 9
+      temporal_dilations:
+        values:
+        - *id001
+      use_combo_condition:
+        values:
+        - true
+      combo_dim:
+        values:
+        - 3
+      use_phase_condition:
+        values:
+        - true
+      phase_dim:
+        values:
+        - 10
+      use_mean_residual_head:
+        values:
+        - true
     Train:
       batch_size:
         values:
-        - 8
+        - 16
       lr:
         values:
-        - 8e-05
+        - 0.0002
       num_epochs:
         values:
-        - 6000
+        - 500
       early_stop_enabled:
         values:
         - false

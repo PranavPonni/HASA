@@ -22,6 +22,7 @@ JOINT_KEYS = [
     "hand_jnt_trq",
     "hand_jnt_cmd_pos",
 ]
+COMBO_KEYS = ("thumb_index", "thumb_middle", "index_middle")
 
 
 def _flatten_tactile(value):
@@ -42,6 +43,7 @@ class CustomDataLoader(BaseDataLoader):
         dir_data, data_found = data_preproc.get_sequence_dict(self.dataset_param, mem=self.mem)
         # Change tactile shape
         dir_data=self.change_shape(dir_data)
+        dir_data=self.add_context_features(dir_data)
         train_dir_data, test_dir_data = data_preproc.split_train_test(dir_data, self.dataset_param,"test_data")
         del dir_data
         gc.collect()
@@ -100,6 +102,42 @@ class CustomDataLoader(BaseDataLoader):
                 if key in val:
                     data[ep][key] = np.asarray(val[key], dtype=np.float32)
 
+        return data
+
+    def add_context_features(self, data):
+        add_combo = bool(self.dataset_param.get("add_selftouch_combo_condition", True))
+        add_phase = bool(self.dataset_param.get("add_selftouch_phase_condition", True))
+        if not add_combo and not add_phase:
+            return data
+        for ep, val in data.items():
+            steps = 1
+            for key in (*TACTILE_KEYS, *JOINT_KEYS):
+                if key in val and np.asarray(val[key]).ndim > 0:
+                    steps = int(np.asarray(val[key]).shape[0])
+                    break
+
+            if add_combo:
+                text = str(ep).lower().replace("-", "_")
+                combo = np.zeros((3,), dtype=np.float32)
+                for idx, name in enumerate(COMBO_KEYS):
+                    if name in text:
+                        combo[idx] = 1.0
+                        break
+                if combo.sum() == 0.0:
+                    # Unknown names get a neutral condition rather than a hard zero.
+                    combo[:] = 1.0 / float(combo.size)
+                val["selftouch_combo"] = np.repeat(combo[None, :], steps, axis=0)
+
+            if add_phase:
+                if steps <= 1:
+                    phase = np.zeros((steps,), dtype=np.float32)
+                else:
+                    phase = np.linspace(0.0, 1.0, steps, dtype=np.float32)
+                features = [phase, phase * 2.0 - 1.0]
+                for freq in (1.0, 2.0, 4.0, 8.0):
+                    angle = (2.0 * np.pi * freq * phase).astype(np.float32)
+                    features.extend([np.sin(angle), np.cos(angle)])
+                val["selftouch_phase"] = np.stack(features, axis=-1).astype(np.float32, copy=False)
         return data
 
 

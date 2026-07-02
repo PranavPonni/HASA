@@ -110,7 +110,7 @@ class RNN_controller(AbstractController):
         plot_dir = os.path.join(self.model_param["model_save_path"], "plots")
         if os.path.isdir(plot_dir):
             for filename in os.listdir(plot_dir):
-                if filename.startswith(("raw_prediction_", "tactile_profile_epoch_", "tactile_residual_epoch_")):
+                if filename.startswith(("raw_prediction_", "tactile_profile_epoch_", "tactile_residual_epoch_", "tactile_taxel_error_epoch_")):
                     path = os.path.join(plot_dir, filename)
                     if os.path.isfile(path):
                         os.remove(path)

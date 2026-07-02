@@ -22,6 +22,7 @@ FINGER_COLORS = {
     "ring": "#8d63e8",
 }
 TACTILE_PLOT_TITLE = "Predicted self-touch vs raw tactile (taxel-mean raw values)"
+TACTILE_TAXEL_ERROR_TITLE = "Raw taxel absolute error (all taxels, raw values)"
 TAXELS_PER_FINGER = 90
 
 TACTILE_XMAX = 400
@@ -883,6 +884,7 @@ def plot_tactile_temporal_profiles(
         err_profile = np.abs(residual_profile)
         abs_error = np.abs(raw_cmp - pred_cmp)
         signed_error = raw_cmp - pred_cmp
+        taxel_mae_time = abs_error.mean(axis=0).T if abs_error.ndim >= 3 else np.asarray(abs_error).reshape(1, -1)
         raw_mae = float(np.mean(abs_error))
         raw_rmse = rmse(raw_cmp, pred_cmp)
         display_mae = float(np.mean(np.abs(raw_profile - pred_profile)))
@@ -915,6 +917,7 @@ def plot_tactile_temporal_profiles(
                 "pred_start_aligned": pred_profile_start_aligned,
                 "residual": residual_profile,
                 "err": err_profile,
+                "taxel_mae_time": taxel_mae_time,
                 "mae": raw_mae,
                 "profile_mae": raw_profile_mae,
                 "display_profile_mae": display_mae,
@@ -1088,6 +1091,52 @@ def plot_tactile_temporal_profiles(
     residual_fig.savefig(residual_path, dpi=160)
     plt.close(residual_fig)
     images["tactile_residual"] = residual_path
+
+    taxel_fig, taxel_axes = plt.subplots(
+        len(profiles),
+        1,
+        figsize=(16, 2.8 * len(profiles)),
+        sharex=True,
+        constrained_layout=True,
+    )
+    if len(profiles) == 1:
+        taxel_axes = [taxel_axes]
+    vmax_values = [
+        np.percentile(profile["taxel_mae_time"], 95)
+        for profile in profiles
+        if np.asarray(profile["taxel_mae_time"]).size
+    ]
+    heat_vmax = max(float(np.max(vmax_values)), 1.0) if vmax_values else 1.0
+    for ax, profile in zip(taxel_axes, profiles):
+        taxel_error = np.asarray(profile["taxel_mae_time"], dtype=np.float32)
+        if taxel_error.shape[-1] > TACTILE_XMAX + 1:
+            taxel_error = taxel_error[:, : TACTILE_XMAX + 1]
+        image = ax.imshow(
+            taxel_error,
+            aspect="auto",
+            origin="lower",
+            interpolation="nearest",
+            cmap="magma",
+            vmin=0.0,
+            vmax=heat_vmax,
+            extent=[0, taxel_error.shape[-1] - 1, 0, taxel_error.shape[0] - 1],
+        )
+        ax.set_ylabel("taxel")
+        ax.set_title(
+            f"{profile['name'].capitalize()} taxel error | raw_acc={profile['accuracy']:.1f}% | "
+            f"MAE={profile['mae']:.1f} | p95={profile['error_p95']:.1f}",
+            fontsize=9,
+        )
+        ax.grid(False)
+    for ax in taxel_axes:
+        ax.set_xlim(0, TACTILE_XMAX)
+        ax.set_xlabel("Timestep")
+    taxel_fig.colorbar(image, ax=taxel_axes, shrink=0.88, label="abs raw error")
+    taxel_fig.suptitle(TACTILE_TAXEL_ERROR_TITLE, fontsize=12)
+    taxel_error_path = os.path.join(plot_dir, f"tactile_taxel_error_epoch_{epoch:04d}.png")
+    taxel_fig.savefig(taxel_error_path, dpi=160)
+    plt.close(taxel_fig)
+    images["tactile_taxel_error"] = taxel_error_path
 
     metric_profiles = [p for p in profiles if p["active"] and p["has_raw"] and p["has_pred"]]
     if not metric_profiles:
