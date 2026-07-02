@@ -1,3 +1,16 @@
+# =============================================================================
+# parameter_base.yaml — selftouch_fcn_poscmd
+# Reconstructed from: TaSA: Two-Phased Deep Predictive Learning of Tactile
+# Sensory Attenuation for Improving In-Grasp Manipulation (arXiv:2602.05468,
+# ICRA 2026), Table I (architecture) and Section IV-A (self-touch training).
+#
+# NOTE: The paper's self-touch phase uses ONLY index + thumb (60 taxels x 3
+# axes = 180 raw tactile dims, split as 90+90 per finger) and 8 active joints
+# (4 index + 4 thumb). This FCN variant intentionally adds middle-finger
+# pair combinations as a project-specific extension while keeping its
+# variant-specific input streams and the simpler paper-style training schedule.
+# =============================================================================
+
 Dataset:
   data_dir: /root/motionlearning/data_server/selftouch_all
   modality:
@@ -19,12 +32,6 @@ Dataset:
     - - 0.1
       - 0.9
     - timestep dimension -> timestep dimension
-    tactile_ring_tip:
-    - n
-    - each
-    - - 0.1
-      - 0.9
-    - timestep dimension -> timestep dimension
     hand_jnt_pos:
     - n
     - each
@@ -37,6 +44,7 @@ Dataset:
     - - 0.1
       - 0.9
     - timestep dimension -> timestep dimension
+  # Paper baseline is index-thumb only; this project config also includes middle pair motions
   sequence_length: 400
   shift_data: 1
   test_split_policy: blocked_tail
@@ -56,197 +64,183 @@ Dataset:
   - thumb_index_episode40
   - thumb_middle_episode40
   - index_middle_episode40
+
 Model:
+  # Paper: 8 active joints (4 index + 4 thumb). Current selftouch_all joint streams are 16-wide, so hand_dim stays 16 unless the loader/data are cropped to active joints.
   hand_dim: 16
   use_joint_pos_only: true
+  # 30 taxels x 3 axes (Fx,Fy,Fz) per finger = 90
   tactile_dim: 90
-  rec_dim: 128
-  dropout: 0.2
+  rec_dim: 192
+  dropout: 0.1
   model: selftouch_fcn_poscmd
   input_modalities:
   - hand_jnt_pos
   - hand_jnt_cmd_pos
   model_name: selftouch_fcn_poscmd
   architecture: encoder_decoder_mlp
-  hidden_dim: 128
-  encoder_dim: 64
-  decoder_dim: 64
-  decoder_out_dim: 188
-Motion: null
+  hidden_dim: 192
+  # Encoder: Linear(input_dim->64) GELU Dropout(0.2) Linear(64->128) GELU
+  encoder_dim: 128
+  # Decoder: Dropout(0.2) Linear(128->64) GELU Linear(64->188) GELU
+  decoder_dim: 128
+  # Decoder projection width; final tactile output = idx(90) + thb(90) + middle(90)
+  decoder_out_dim: 256
+
+  temporal_blocks: 2
+  temporal_kernel_size: 7
+Motion:
+
 Required:
   controller_name: RNN_controller
   model_name: selftouch_fcn_poscmd
+
 Test:
   loss_coef:
     tactile_index_tip: 1.5
     tactile_thumb_tip: 1.0
     tactile_middle_tip: 2.5
     tactile_loss: mae
-    tactile_spread_mae_weight: 1.0
-    tactile_active_weight: 1.0
-    tactile_active_threshold_ratio: 0.08
-    tactile_intensity_weight: 0.75
-    tactile_intensity_gamma: 2.0
-    tactile_contact_weight: 0.0
-    tactile_contact_temperature: 0.08
-    tactile_peak_weight: 1.0
-    tactile_profile_weight: 0.05
-    tactile_derivative_weight: 0.75
-    tactile_curvature_weight: 0.45
-    tactile_shape_weight: 0.25
-    tactile_highpass_weight: 0.75
-    tactile_highpass_kernel: 9
-    tactile_temporal_std_weight: 0.35
-    tactile_delta_std_weight: 0.35
-    tactile_fair_loss: false
-    tactile_curve_loss: false
-    tactile_level_weight: 0.8
-    tactile_amplitude_weight: 0.2
-    tactile_corr_weight: 0.1
-    tactile_batch_profile_weight: 0.1
-    tactile_centered_profile_weight: 0.0
-    tactile_topk_weight: 1.0
-    tactile_taxel_profile_weight: 1.5
-    tactile_temporal_profile_weight: 0.25
-    tactile_initial_weight: 1.0
-    contrastive: 0.0
-    classification: 0.0
-    tactile_mae_weight: 4.0
-    tactile_bias_weight: 2.5
-    tactile_timestep_mean_weight: 1.0
-    tactile_spatial_corr_weight: 0.25
-    tactile_topk_ratio: 0.05
-    tactile_peak_ratio: 0.05
-    tactile_raw_scale_weight: 2.0
-    tactile_raw_topk_weight: 1.0
-    tactile_raw_scale_clip: 5.0
-    tactile_raw_bias_weight: 6.0
-    tactile_raw_timestep_mean_weight: 3.0
+    tactile_mae_weight: 3.0
+    tactile_raw_l1_weight: 3.0
+    tactile_raw_huber_weight: 1.0
+    tactile_raw_error_loss_scale: 120.0
+    tactile_raw_error_clip: 450.0
+    tactile_raw_huber_beta: 80.0
+    tactile_raw_scale_weight: 0.5
+    tactile_raw_scale_clip: 3.0
+    tactile_raw_topk_weight: 0.5
+    tactile_raw_bias_weight: 2.0
+    tactile_raw_timestep_mean_weight: 1.0
     tactile_raw_taxel_mean_weight: 0.5
-    tactile_raw_mean_loss_scale: 20.0
-    tactile_raw_slope_clip_quantile: 0.99
-  model_load_path: /root/motionlearning/model_weight/selftouch_fcn_poscmd/parameter_base/epoch0.pth
+    tactile_raw_mean_loss_scale: 80.0
+    tactile_raw_slope_clip_quantile: 0.98
+    tactile_derivative_weight: 0.35
+    tactile_curvature_weight: 0.15
+    tactile_highpass_weight: 0.35
+    tactile_highpass_kernel: 9
+    tactile_temporal_std_weight: 0.15
+    tactile_delta_std_weight: 0.15
+    tactile_amplitude_weight: 0.1
+    tactile_taxel_profile_weight: 0.35
+    tactile_spatial_corr_weight: 0.1
+    tactile_topk_ratio: 0.05
+  model_load_path: 
+    /root/motionlearning/model_weight/selftouch_fcn_poscmd/parameter_base/epoch0.pth
+
 Train:
+  # --- Paper Section IV-A: Adam, lr=0.001, batch_size=100, 20000 epochs ---
   batch_size: 8
-  lr: 5.0e-05
+  lr: 8e-05
   lr_schedule:
     milestones:
-    - 250
-    - 400
-    - 525
+    - 1800
+    - 3200
+    - 4600
     factors:
     - 0.5
-    - 0.2
-    - 0.05
-  model_save_iter: 25
-  eval_every: 5
-  plot_every: 25
+    - 0.25
+    - 0.1
+  model_save_iter: 100
+  eval_every: 20
+  plot_every: 100
   wandb_watch: false
   wandb_watch_log: gradients
   wandb_watch_freq: 100
   wandb_log_images: false
   wandb_save_model: false
   wandb_save_scaling: false
-  num_epochs: 500
+  num_epochs: 6000
   loss_coef:
     tactile_index_tip: 1.5
     tactile_thumb_tip: 1.0
     tactile_middle_tip: 2.5
     tactile_loss: mae
-    tactile_spread_mae_weight: 1.0
-    tactile_active_weight: 1.0
-    tactile_active_threshold_ratio: 0.08
-    tactile_intensity_weight: 0.75
-    tactile_intensity_gamma: 2.0
-    tactile_contact_weight: 0.0
-    tactile_contact_temperature: 0.08
-    tactile_peak_weight: 1.0
-    tactile_profile_weight: 0.05
-    tactile_derivative_weight: 0.75
-    tactile_curvature_weight: 0.45
-    tactile_shape_weight: 0.25
-    tactile_highpass_weight: 0.75
-    tactile_highpass_kernel: 9
-    tactile_temporal_std_weight: 0.35
-    tactile_delta_std_weight: 0.35
-    tactile_fair_loss: false
-    tactile_curve_loss: false
-    tactile_level_weight: 0.8
-    tactile_amplitude_weight: 0.2
-    tactile_corr_weight: 0.1
-    tactile_batch_profile_weight: 0.1
-    tactile_centered_profile_weight: 0.0
-    tactile_topk_weight: 1.0
-    tactile_taxel_profile_weight: 1.5
-    tactile_temporal_profile_weight: 0.25
-    tactile_initial_weight: 1.0
-    contrastive: 0.0
-    classification: 0.0
-    tactile_mae_weight: 4.0
-    tactile_bias_weight: 2.5
-    tactile_timestep_mean_weight: 1.0
-    tactile_spatial_corr_weight: 0.25
-    tactile_topk_ratio: 0.05
-    tactile_peak_ratio: 0.05
-    tactile_raw_scale_weight: 2.0
-    tactile_raw_topk_weight: 1.0
-    tactile_raw_scale_clip: 5.0
-    tactile_raw_bias_weight: 6.0
-    tactile_raw_timestep_mean_weight: 3.0
+    tactile_mae_weight: 3.0
+    tactile_raw_l1_weight: 3.0
+    tactile_raw_huber_weight: 1.0
+    tactile_raw_error_loss_scale: 120.0
+    tactile_raw_error_clip: 450.0
+    tactile_raw_huber_beta: 80.0
+    tactile_raw_scale_weight: 0.5
+    tactile_raw_scale_clip: 3.0
+    tactile_raw_topk_weight: 0.5
+    tactile_raw_bias_weight: 2.0
+    tactile_raw_timestep_mean_weight: 1.0
     tactile_raw_taxel_mean_weight: 0.5
-    tactile_raw_mean_loss_scale: 20.0
-    tactile_raw_slope_clip_quantile: 0.99
+    tactile_raw_mean_loss_scale: 80.0
+    tactile_raw_slope_clip_quantile: 0.98
+    tactile_derivative_weight: 0.35
+    tactile_curvature_weight: 0.15
+    tactile_highpass_weight: 0.35
+    tactile_highpass_kernel: 9
+    tactile_temporal_std_weight: 0.15
+    tactile_delta_std_weight: 0.15
+    tactile_amplitude_weight: 0.1
+    tactile_taxel_profile_weight: 0.35
+    tactile_spatial_corr_weight: 0.1
+    tactile_topk_ratio: 0.05
   project: selftouch_fcn_poscmd
   wandb_entity: hasa-handresearch-waseda-university
   early_stop_enabled: false
-  early_stop_monitor: total_loss
-  early_stop_mode: min
-  early_stop_patience: 70
-  early_stop_min_delta: 0.002
-  early_stop_min_epochs: 180
+  early_stop_monitor: raw_acc
+  early_stop_mode: max
+  early_stop_patience: 3000
+  early_stop_min_delta: 0.5
+  early_stop_min_epochs: 4000
   eval_batch_size: 16
   adamw_foreach: false
   empty_cache_after_save: true
   empty_cache_after_eval: false
   assert_cpu_batches: true
-  cuda_memory_fraction: null
+  cuda_memory_fraction:
   use_amp: true
   torch_num_threads: 1
   init_output_bias_from_tactile_mean: true
   zero_output_head_on_bias_init: true
   output_head_init_std: 0.0001
-Pretrain: null
+
+  train_micro_batch_size: 2
+  grad_clip_norm: 1.0
+Pretrain:
+
 Sweep:
   tune:
     Model:
       rec_dim:
         values:
-        - 128
+        - 192
       dropout:
         values:
-        - 0.2
+        - 0.1
       hidden_dim:
         values:
-        - 128
+        - 192
       encoder_dim:
         values:
-        - 64
+        - 128
       decoder_dim:
         values:
-        - 64
+        - 128
       decoder_out_dim:
         values:
-        - 188
+        - 256
+      temporal_blocks:
+        values:
+        - 2
+      temporal_kernel_size:
+        values:
+        - 7
     Train:
       batch_size:
         values:
         - 8
       lr:
         values:
-        - 5.0e-05
+        - 8e-05
       num_epochs:
         values:
-        - 500
+        - 6000
       early_stop_enabled:
         values:
         - false

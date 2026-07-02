@@ -152,6 +152,31 @@ def _raw_delta(pred, target, raw_slope):
     return (pred - target) * slope
 
 
+def _raw_l1_loss(pred, target, raw_slope, normalizer, clip=None):
+    delta = _raw_delta(pred, target, raw_slope)
+    if delta is None:
+        return pred.sum() * 0.0
+    error = delta.abs()
+    if clip is not None and float(clip) > 0.0:
+        error = error.clamp(max=float(clip))
+    return error.mean() / float(normalizer)
+
+
+def _raw_huber_loss(pred, target, raw_slope, normalizer, beta=80.0, clip=None):
+    delta = _raw_delta(pred, target, raw_slope)
+    if delta is None:
+        return pred.sum() * 0.0
+    if clip is not None and float(clip) > 0.0:
+        delta = delta.clamp(min=-float(clip), max=float(clip))
+    beta = max(float(beta), 1e-6)
+    error = torch.where(
+        delta.abs() < beta,
+        0.5 * delta.pow(2) / beta,
+        delta.abs() - 0.5 * beta,
+    )
+    return error.mean() / float(normalizer)
+
+
 def _raw_mean_bias_loss(pred, target, raw_slope, normalizer):
     delta = _raw_delta(pred, target, raw_slope)
     if delta is None:
@@ -288,6 +313,29 @@ def active_tactile_loss(pred, target, loss_cfg=None):
 
     raw_slope = cfg.get("tactile_raw_slope")
     raw_mean_normalizer = max(_cfg_float(cfg, "tactile_raw_mean_loss_scale", 20.0), 1e-6)
+    raw_error_normalizer = max(_cfg_float(cfg, "tactile_raw_error_loss_scale", raw_mean_normalizer), 1e-6)
+    raw_error_clip = _cfg_float(cfg, "tactile_raw_error_clip", 0.0)
+    raw_l1_weight = _cfg_float(cfg, "tactile_raw_l1_weight")
+    if raw_l1_weight:
+        loss = loss + raw_l1_weight * _raw_l1_loss(
+            pred,
+            target,
+            raw_slope,
+            raw_error_normalizer,
+            raw_error_clip,
+        )
+
+    raw_huber_weight = _cfg_float(cfg, "tactile_raw_huber_weight")
+    if raw_huber_weight:
+        loss = loss + raw_huber_weight * _raw_huber_loss(
+            pred,
+            target,
+            raw_slope,
+            raw_error_normalizer,
+            _cfg_float(cfg, "tactile_raw_huber_beta", 80.0),
+            raw_error_clip,
+        )
+
     raw_bias_weight = _cfg_float(cfg, "tactile_raw_bias_weight")
     if raw_bias_weight:
         loss = loss + raw_bias_weight * _raw_mean_bias_loss(

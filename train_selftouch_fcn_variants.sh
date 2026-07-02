@@ -3,7 +3,7 @@ set -uo pipefail
 
 LOG_DIR="${LOG_DIR:-logs/selftouch_fcn_variants}"
 SWEEP_COUNT="${SWEEP_COUNT:-1}"
-MAX_PARALLEL_JOBS="${MAX_PARALLEL_JOBS:-1}"
+MAX_PARALLEL_JOBS="${MAX_PARALLEL_JOBS:-4}"
 
 if ! [[ "$MAX_PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [ "$MAX_PARALLEL_JOBS" -lt 1 ]; then
   echo "MAX_PARALLEL_JOBS must be a positive integer; got '${MAX_PARALLEL_JOBS}'" >&2
@@ -47,7 +47,7 @@ status=0
 running=0
 
 echo "Running ${#variants[@]} selftouch FCN variants with MAX_PARALLEL_JOBS=${MAX_PARALLEL_JOBS}"
-echo "Default is sequential GPU training to avoid CUDA context contention on one GPU."
+echo "Default is 4 parallel jobs to avoid freezing the desktop; raise MAX_PARALLEL_JOBS only if RAM stays healthy."
 
 for variant in "${variants[@]}"; do
   while [ "$running" -ge "$MAX_PARALLEL_JOBS" ]; do

@@ -40,6 +40,8 @@ class ControlledTemporalSelfTouch(nn.Module):
         encoder_dim = int(param.get("encoder_dim", 64))
         decoder_dim = int(param.get("decoder_dim", 64))
         decoder_out_dim = int(param.get("decoder_out_dim", 188))
+        temporal_blocks = int(param.get("temporal_blocks", 0))
+        temporal_kernel_size = int(param.get("temporal_kernel_size", 5))
         dropout = float(param["dropout"])
 
         rec_in = self.hand_dim * len(self.input_modalities)
@@ -59,6 +61,10 @@ class ControlledTemporalSelfTouch(nn.Module):
             nn.Linear(decoder_dim, decoder_out_dim),
             nn.GELU(),
         )
+        self.temporal = nn.Sequential(*[
+            TemporalBlock(hidden_dim, kernel_size=temporal_kernel_size, dropout=dropout)
+            for _ in range(max(0, temporal_blocks))
+        ])
         self.output_net = nn.Linear(decoder_out_dim, rec_out)
         self._init_tactile_bias()
 
@@ -101,6 +107,7 @@ class ControlledTemporalSelfTouch(nn.Module):
             hand_jnt_cmd_pos=hand_jnt_cmd_pos,
         )
         hidden = self.encoder(x)
+        hidden = self.temporal(hidden)
         decoded = self.decoder(hidden)
         out = self._activate_output(self.output_net(decoded))
         idx_pred = out[..., : self.tactile_dim]

@@ -50,6 +50,8 @@ WANDB_TACTILE_METRIC_KEYS = {
     "thumb_raw_accuracy",
     "middle_mae",
     "middle_raw_accuracy",
+    "raw_mae",
+    "raw_acc",
 }
 
 
@@ -233,6 +235,10 @@ class RNN_controller(AbstractController):
                     )
                     plot_metrics = plot_bundle.get("metrics", {})
                     logger_dict.update(_wandb_metric_subset(plot_metrics))
+                    if "tactile_line_mae" in plot_metrics:
+                        logger_dict["raw_mae"] = float(plot_metrics["tactile_line_mae"])
+                    if "tactile_line_raw_accuracy" in plot_metrics:
+                        logger_dict["raw_acc"] = float(plot_metrics["tactile_line_raw_accuracy"])
                     if wandb_log_images:
                         for wandb_key, path in plot_bundle.get("images", {}).items():
                             logger_dict[wandb_key] = wandb.Image(path)
@@ -368,6 +374,8 @@ class RNN_controller(AbstractController):
         if not (
             float(self.loss_coef.get("tactile_raw_scale_weight", 0.0))
             or float(self.loss_coef.get("tactile_raw_topk_weight", 0.0))
+            or float(self.loss_coef.get("tactile_raw_l1_weight", 0.0))
+            or float(self.loss_coef.get("tactile_raw_huber_weight", 0.0))
             or float(self.loss_coef.get("tactile_raw_bias_weight", 0.0))
             or float(self.loss_coef.get("tactile_raw_timestep_mean_weight", 0.0))
             or float(self.loss_coef.get("tactile_raw_taxel_mean_weight", 0.0))
@@ -483,10 +491,17 @@ class RNN_controller(AbstractController):
         if mode == "train":
             if getattr(self, "use_amp", False):
                 self.scaler.scale(total_loss).backward()
+                grad_clip = float(self.mode_param.get("grad_clip_norm", 0.0) or 0.0)
+                if grad_clip > 0.0:
+                    self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), grad_clip)
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
             else:
                 total_loss.backward()
+                grad_clip = float(self.mode_param.get("grad_clip_norm", 0.0) or 0.0)
+                if grad_clip > 0.0:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), grad_clip)
                 self.optimizer.step()
 
         return (
