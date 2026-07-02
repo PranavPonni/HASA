@@ -1,0 +1,26 @@
+# Python/runtime caches
+__pycache__/
+*.py[cod]
+.cache/
+
+# Large model/data blobs
+*.pth
+*.pt
+*.ckpt
+*.pkl
+*.npy
+*.npz
+data_server/
+model_weight/
+wandb/
+log/
+logs/
+parameter/*/*/
+!parameter/*/parameter_base/
+!parameter/*/parameter_base/parameter_base.yaml
+
+# Local editor/system files
+.vscode/
+.agents/
+.codex/
+.DS_Store

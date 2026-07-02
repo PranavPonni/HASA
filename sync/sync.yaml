@@ -1,0 +1,7 @@
+
+
+mini6dofarm_ws:
+  User: mini6dofarm
+  IP: 100.85.194.113
+  their_dir: /home/mini6dofarm/work/HASA/MotionLearningWS
+  our_dir: /home/handlingteam2/HASA/user/ueno/MotionLearningWS

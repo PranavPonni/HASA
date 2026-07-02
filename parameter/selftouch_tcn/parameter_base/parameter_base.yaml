@@ -1,0 +1,144 @@
+Dataset:
+  data_dir: /root/motionlearning/data_server/selftouch_all
+  modality:
+    tactile_index_tip: ["n", "each", [0.1, 0.9], "timestep dimension -> timestep dimension"]
+    tactile_thumb_tip: ["n", "each", [0.1, 0.9], "timestep dimension -> timestep dimension"]
+    tactile_middle_tip: ["n", "each", [0.1, 0.9], "timestep dimension -> timestep
+        dimension"]
+    tactile_ring_tip: ["n", "each", [0.1, 0.9], "timestep dimension -> timestep dimension"]
+    hand_jnt_pos: ["n", "each", [0.1, 0.9], "timestep dimension -> timestep dimension"]
+    hand_jnt_cmd_pos: ["n", "each", [0.1, 0.9], "timestep dimension -> timestep dimension"]
+  sequence_length: 400
+  shift_data: 1
+  test_split_policy: blocked_tail
+  test_split_fraction: 0.2
+  allow_missing_timesteps: false
+  combinations:
+  - thumb-index
+  - thumb-middle
+  - index-middle
+  test_data:
+  - thumb_index_episode0
+  - thumb_middle_episode0
+  - index_middle_episode0
+  - thumb_index_episode20
+  - thumb_middle_episode20
+  - index_middle_episode20
+  - thumb_index_episode40
+  - thumb_middle_episode40
+  - index_middle_episode40
+
+Model:
+  hand_dim: 8
+  use_joint_pos_only: true
+  tactile_dim: 90
+  rec_dim: 256
+  dropout: 0.0
+  kernel_size: 5
+  num_levels: 4
+  model: selftouch_tcn
+
+Motion:
+
+Required:
+  controller_name: RNN_controller
+  model_name: selftouch_tcn
+
+Test:
+  loss_coef: &selftouch_tcn_loss
+    tactile_index_tip: 1.5
+    tactile_thumb_tip: 1.0
+    tactile_middle_tip: 2.5
+    tactile_loss: mae
+    tactile_spread_mae_weight: 0.75
+    tactile_active_weight: 0.35
+    tactile_active_threshold_ratio: 0.08
+    tactile_intensity_weight: 0.20
+    tactile_intensity_gamma: 2.0
+    tactile_contact_weight: 0.0
+    tactile_contact_temperature: 0.08
+    tactile_peak_weight: 0.35
+    tactile_profile_weight: 0.15
+    tactile_derivative_weight: 0.75
+    tactile_curvature_weight: 0.45
+    tactile_shape_weight: 0.25
+    tactile_highpass_weight: 0.75
+    tactile_highpass_kernel: 9
+    tactile_temporal_std_weight: 0.35
+    tactile_delta_std_weight: 0.35
+    tactile_fair_loss: false
+    tactile_curve_loss: false
+    tactile_level_weight: 0.3
+    tactile_amplitude_weight: 0.2
+    tactile_corr_weight: 0.1
+    tactile_batch_profile_weight: 0.1
+    tactile_centered_profile_weight: 0.05
+    tactile_topk_weight: 0.30
+    tactile_taxel_profile_weight: 0.35
+    tactile_temporal_profile_weight: 0.25
+    tactile_initial_weight: 1.0
+    contrastive: 0.0
+    classification: 0.0
+  model_load_path: 
+    /root/motionlearning/model_weight/selftouch_tcn/parameter_base/epoch0.pth
+
+Train:
+  batch_size: 16
+  lr: 0.0001
+  lr_schedule:
+    milestones:
+    - 240
+    - 360
+    - 384
+    factors:
+    - 0.3
+    - 0.1
+    - 0.03
+  model_save_iter: 25
+  eval_every: 1
+  plot_every: 10
+  use_amp: true
+  wandb_watch: false
+  wandb_watch_log: gradients
+  wandb_watch_freq: 100
+  num_epochs: 400
+  loss_coef: *selftouch_tcn_loss
+  project: selftouch_tcn
+  wandb_entity: hasa-handresearch-waseda-university
+
+  early_stop_enabled: false
+  early_stop_monitor: total_loss
+  early_stop_mode: min
+  early_stop_patience: 70
+  early_stop_min_delta: 0.002
+  early_stop_min_epochs: 180
+Pretrain:
+
+Sweep:
+  tune:
+    Model:
+      rec_dim:
+        values: [128, 256, 384]
+      kernel_size:
+        values: [3, 5, 7]
+      num_levels:
+        values: [3, 4, 5]
+      dropout:
+        values: [0.0, 0.02, 0.05]
+    Train:
+      batch_size:
+        values: [8, 16, 32]
+      lr:
+        distribution: log_uniform_values
+        min: 3.0e-05
+        max: 3.0e-04
+    Dataset:
+      sequence_length:
+        values:
+        - 400
+  method: random
+  metric:
+    name: tactile_line_raw_accuracy
+    goal: maximize
+  project: selftouch_tcn
+  wandb_entity: hasa-handresearch-waseda-university
