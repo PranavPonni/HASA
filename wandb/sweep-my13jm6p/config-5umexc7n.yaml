@@ -1,0 +1,12 @@
+wandb_version: 1
+
+batch_size:
+  value: 8
+d_model:
+  value: 384
+dropout:
+  value: 0.02
+encoder_layers:
+  value: 6
+lr:
+  value: 0.0003

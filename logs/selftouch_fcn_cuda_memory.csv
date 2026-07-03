@@ -1,0 +1,15 @@
+variant,param_file,batch_size,sequence_length,input_modalities,parameters,amp,before_alloc_mib,before_reserved_mib,peak_alloc_mib,peak_reserved_mib,current_alloc_mib,current_reserved_mib
+selftouch_fcn_pos,parameter/selftouch_fcn_pos/parameter_base/parameter_base.yaml,8,400,hand_jnt_pos,1187790,1,24.86181640625,46.0,114.181640625,124.0,40.10888671875,124.0
+selftouch_fcn_vel,parameter/selftouch_fcn_vel/parameter_base/parameter_base.yaml,8,400,hand_jnt_vel,1187790,1,24.86181640625,46.0,114.181640625,124.0,40.10888671875,124.0
+selftouch_fcn_trq,parameter/selftouch_fcn_trq/parameter_base/parameter_base.yaml,8,400,hand_jnt_trq,1187790,1,24.86181640625,46.0,114.181640625,124.0,40.10888671875,124.0
+selftouch_fcn_cmd,parameter/selftouch_fcn_cmd/parameter_base/parameter_base.yaml,8,400,hand_jnt_cmd_pos,1187790,1,24.86181640625,46.0,114.181640625,124.0,40.10888671875,124.0
+selftouch_fcn_posvel,parameter/selftouch_fcn_posvel/parameter_base/parameter_base.yaml,8,400,hand_jnt_pos+hand_jnt_vel,1189838,1,24.86962890625,46.0,114.29052734375,124.0,40.14013671875,124.0
+selftouch_fcn_postrq,parameter/selftouch_fcn_postrq/parameter_base/parameter_base.yaml,8,400,hand_jnt_pos+hand_jnt_trq,1189838,1,24.86962890625,46.0,114.29052734375,124.0,40.14013671875,124.0
+selftouch_fcn_poscmd,parameter/selftouch_fcn_poscmd/parameter_base/parameter_base.yaml,8,400,hand_jnt_pos+hand_jnt_cmd_pos,1189838,1,24.86962890625,46.0,114.29052734375,124.0,40.14013671875,124.0
+selftouch_fcn_velcmd,parameter/selftouch_fcn_velcmd/parameter_base/parameter_base.yaml,8,400,hand_jnt_vel+hand_jnt_cmd_pos,1189838,1,24.86962890625,46.0,114.29052734375,124.0,40.14013671875,124.0
+selftouch_fcn_veltrq,parameter/selftouch_fcn_veltrq/parameter_base/parameter_base.yaml,8,400,hand_jnt_vel+hand_jnt_trq,1189838,1,24.86962890625,46.0,114.29052734375,124.0,40.14013671875,124.0
+selftouch_fcn_trqcmd,parameter/selftouch_fcn_trqcmd/parameter_base/parameter_base.yaml,8,400,hand_jnt_trq+hand_jnt_cmd_pos,1189838,1,24.86962890625,46.0,114.29052734375,124.0,40.14013671875,124.0
+selftouch_fcn_posveltrq,parameter/selftouch_fcn_posveltrq/parameter_base/parameter_base.yaml,8,400,hand_jnt_pos+hand_jnt_vel+hand_jnt_trq,1191886,1,24.87744140625,46.0,114.39990234375,124.0,40.17138671875,124.0
+selftouch_fcn_postrqcmd,parameter/selftouch_fcn_postrqcmd/parameter_base/parameter_base.yaml,8,400,hand_jnt_pos+hand_jnt_trq+hand_jnt_cmd_pos,1191886,1,24.87744140625,46.0,114.39990234375,124.0,40.17138671875,124.0
+selftouch_fcn_poscmdvel,parameter/selftouch_fcn_poscmdvel/parameter_base/parameter_base.yaml,8,400,hand_jnt_pos+hand_jnt_cmd_pos+hand_jnt_vel,1191886,1,24.87744140625,46.0,114.39990234375,124.0,40.17138671875,124.0
+selftouch_fcn_posveltrqcmd,parameter/selftouch_fcn_posveltrqcmd/parameter_base/parameter_base.yaml,8,400,hand_jnt_pos+hand_jnt_vel+hand_jnt_trq+hand_jnt_cmd_pos,1193934,1,24.88525390625,46.0,114.5087890625,124.0,40.20263671875,124.0

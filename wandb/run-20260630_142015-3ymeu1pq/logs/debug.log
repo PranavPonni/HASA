@@ -1,0 +1,11 @@
+2026-06-30 14:20:15,705 INFO    Thread-39 :1140899 [wandb_setup.py:_flush():80] Current SDK version is 0.21.1
+2026-06-30 14:20:15,705 INFO    Thread-39 :1140899 [wandb_setup.py:_flush():80] Configure stats pid to 1140899
+2026-06-30 14:20:15,705 INFO    Thread-39 :1140899 [wandb_setup.py:_flush():80] Loading settings from /root/.config/wandb/settings
+2026-06-30 14:20:15,705 INFO    Thread-39 :1140899 [wandb_setup.py:_flush():80] Loading settings from /root/motionlearning/wandb/settings
+2026-06-30 14:20:15,705 INFO    Thread-39 :1140899 [wandb_setup.py:_flush():80] Loading settings from environment variables
+2026-06-30 14:20:15,705 INFO    Thread-39 :1140899 [wandb_init.py:setup_run_log_directory():703] Logging user logs to /root/motionlearning/wandb/run-20260630_142015-3ymeu1pq/logs/debug.log
+2026-06-30 14:20:15,705 INFO    Thread-39 :1140899 [wandb_init.py:setup_run_log_directory():704] Logging internal logs to /root/motionlearning/wandb/run-20260630_142015-3ymeu1pq/logs/debug-internal.log
+2026-06-30 14:20:15,705 INFO    Thread-39 :1140899 [wandb_init.py:init():830] calling init triggers
+2026-06-30 14:20:15,705 INFO    Thread-39 :1140899 [wandb_init.py:init():835] wandb.init called with sweep_config: {'batch_size': 8, 'dropout': 0, 'lr': 3.95582849945833e-05, 'rec_dim': 1024, 'sequence_length': 400}
+config: {'_wandb': {}}
+2026-06-30 14:20:15,705 INFO    Thread-39 :1140899 [wandb_init.py:init():871] starting backend

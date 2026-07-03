@@ -1,0 +1,12 @@
+wandb_version: 1
+
+batch_size:
+  value: 8
+dropout:
+  value: 0
+lr:
+  value: 3.79213500561995e-05
+rec_dim:
+  value: 1024
+sequence_length:
+  value: 400

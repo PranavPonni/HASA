@@ -1,0 +1,18 @@
+{"time":"2026-07-03T07:42:14.169045245+09:00","level":"INFO","msg":"stream: starting","core version":"0.21.1"}
+{"time":"2026-07-03T07:42:14.513901792+09:00","level":"INFO","msg":"stream: created new stream","id":"63fw25al"}
+{"time":"2026-07-03T07:42:14.513935316+09:00","level":"INFO","msg":"stream: started","id":"63fw25al"}
+{"time":"2026-07-03T07:42:14.513947591+09:00","level":"INFO","msg":"writer: started","stream_id":"63fw25al"}
+{"time":"2026-07-03T07:42:14.513973069+09:00","level":"INFO","msg":"handler: started","stream_id":"63fw25al"}
+{"time":"2026-07-03T07:42:14.513954311+09:00","level":"INFO","msg":"sender: started","stream_id":"63fw25al"}
+{"time":"2026-07-03T09:03:55.468882653+09:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/hasa-handresearch-waseda-university/selftouch_fcn_pos/63fw25al/file_stream\": dial tcp: lookup api.wandb.ai on 127.0.0.53:53: read udp 127.0.0.1:58875->127.0.0.53:53: i/o timeout"}
+{"time":"2026-07-03T09:04:07.64862853+09:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/hasa-handresearch-waseda-university/selftouch_fcn_pos/63fw25al/file_stream\": dial tcp: lookup api.wandb.ai on 127.0.0.53:53: read udp 127.0.0.1:46183->127.0.0.53:53: i/o timeout"}
+{"time":"2026-07-03T09:04:21.957321631+09:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/hasa-handresearch-waseda-university/selftouch_fcn_pos/63fw25al/file_stream\": dial tcp: lookup api.wandb.ai on 127.0.0.53:53: read udp 127.0.0.1:51761->127.0.0.53:53: i/o timeout"}
+{"time":"2026-07-03T09:04:40.243791546+09:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/hasa-handresearch-waseda-university/selftouch_fcn_pos/63fw25al/file_stream\": dial tcp: lookup api.wandb.ai on 127.0.0.53:53: read udp 127.0.0.1:41425->127.0.0.53:53: i/o timeout"}
+{"time":"2026-07-03T09:05:07.171461497+09:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/hasa-handresearch-waseda-university/selftouch_fcn_pos/63fw25al/file_stream\": dial tcp: lookup api.wandb.ai on 127.0.0.53:53: read udp 127.0.0.1:60949->127.0.0.53:53: i/o timeout"}
+{"time":"2026-07-03T09:10:09.152022574+09:00","level":"INFO","msg":"stream: closing","id":"63fw25al"}
+{"time":"2026-07-03T09:10:09.154266475+09:00","level":"ERROR","msg":"sender: sendSummary called after exit"}
+{"time":"2026-07-03T09:10:09.163993398+09:00","level":"WARN","msg":"sender: received Exit record more than once, ignoring"}
+{"time":"2026-07-03T09:10:09.264869621+09:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2026-07-03T09:10:10.223467416+09:00","level":"INFO","msg":"handler: closed","stream_id":"63fw25al"}
+{"time":"2026-07-03T09:10:10.223539868+09:00","level":"INFO","msg":"sender: closed","stream_id":"63fw25al"}
+{"time":"2026-07-03T09:10:10.223547493+09:00","level":"INFO","msg":"stream: closed","id":"63fw25al"}

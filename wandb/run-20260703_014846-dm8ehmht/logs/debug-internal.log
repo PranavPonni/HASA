@@ -1,0 +1,14 @@
+{"time":"2026-07-03T01:48:46.028006955+09:00","level":"INFO","msg":"stream: starting","core version":"0.21.1"}
+{"time":"2026-07-03T01:48:46.365492232+09:00","level":"INFO","msg":"stream: created new stream","id":"dm8ehmht"}
+{"time":"2026-07-03T01:48:46.365524086+09:00","level":"INFO","msg":"stream: started","id":"dm8ehmht"}
+{"time":"2026-07-03T01:48:46.365538217+09:00","level":"INFO","msg":"writer: started","stream_id":"dm8ehmht"}
+{"time":"2026-07-03T01:48:46.365561497+09:00","level":"INFO","msg":"handler: started","stream_id":"dm8ehmht"}
+{"time":"2026-07-03T01:48:46.365538255+09:00","level":"INFO","msg":"sender: started","stream_id":"dm8ehmht"}
+{"time":"2026-07-03T02:57:58.574764811+09:00","level":"INFO","msg":"api: retrying HTTP error","status":500,"url":"https://api.wandb.ai/files/hasa-handresearch-waseda-university/selftouch_fcn_trq/dm8ehmht/file_stream","body":"{\"error\":\"context deadline exceeded\"}"}
+{"time":"2026-07-03T02:59:29.81045779+09:00","level":"INFO","msg":"api: retrying HTTP error","status":500,"url":"https://api.wandb.ai/files/hasa-handresearch-waseda-university/selftouch_fcn_trq/dm8ehmht/file_stream","body":"{\"error\":\"context deadline exceeded\"}"}
+{"time":"2026-07-03T03:45:45.89455158+09:00","level":"INFO","msg":"handler: operation stats","stats":{"operations":[{"desc":"updating run metadata","runtime_seconds":0.87286411}],"total_operations":1}}
+{"time":"2026-07-03T03:45:46.621715141+09:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2026-07-03T03:45:47.073774947+09:00","level":"INFO","msg":"stream: closing","id":"dm8ehmht"}
+{"time":"2026-07-03T03:45:47.073785902+09:00","level":"INFO","msg":"handler: closed","stream_id":"dm8ehmht"}
+{"time":"2026-07-03T03:45:47.073819174+09:00","level":"INFO","msg":"sender: closed","stream_id":"dm8ehmht"}
+{"time":"2026-07-03T03:45:47.073825681+09:00","level":"INFO","msg":"stream: closed","id":"dm8ehmht"}

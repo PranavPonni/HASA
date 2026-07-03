@@ -1,0 +1,13 @@
+{"time":"2026-07-03T01:48:27.571085526+09:00","level":"INFO","msg":"stream: starting","core version":"0.21.1"}
+{"time":"2026-07-03T01:48:27.919481374+09:00","level":"INFO","msg":"stream: created new stream","id":"1k6xqdi9"}
+{"time":"2026-07-03T01:48:27.919509928+09:00","level":"INFO","msg":"stream: started","id":"1k6xqdi9"}
+{"time":"2026-07-03T01:48:27.919547658+09:00","level":"INFO","msg":"writer: started","stream_id":"1k6xqdi9"}
+{"time":"2026-07-03T01:48:27.919573529+09:00","level":"INFO","msg":"handler: started","stream_id":"1k6xqdi9"}
+{"time":"2026-07-03T01:48:27.919551494+09:00","level":"INFO","msg":"sender: started","stream_id":"1k6xqdi9"}
+{"time":"2026-07-03T01:49:29.463788892+09:00","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/files/hasa-handresearch-waseda-university/selftouch_fcn_vel/1k6xqdi9/file_stream\": unexpected EOF"}
+{"time":"2026-07-03T03:45:46.208410925+09:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2026-07-03T03:45:46.242352445+09:00","level":"INFO","msg":"handler: operation stats","stats":{"operations":[{"desc":"uploading history steps 10-10, summary","runtime_seconds":0.033732869}],"total_operations":1}}
+{"time":"2026-07-03T03:45:46.759750673+09:00","level":"INFO","msg":"stream: closing","id":"1k6xqdi9"}
+{"time":"2026-07-03T03:45:46.759763155+09:00","level":"INFO","msg":"handler: closed","stream_id":"1k6xqdi9"}
+{"time":"2026-07-03T03:45:46.759797176+09:00","level":"INFO","msg":"sender: closed","stream_id":"1k6xqdi9"}
+{"time":"2026-07-03T03:45:46.759805208+09:00","level":"INFO","msg":"stream: closed","id":"1k6xqdi9"}

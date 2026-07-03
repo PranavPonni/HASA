@@ -1,0 +1,16 @@
+wandb_version: 1
+
+batch_size:
+  value: 8
+d_model:
+  value: 256
+dropout:
+  value: 0.05
+encoder_layers:
+  value: 4
+lr:
+  value: 3.0e-05
+max_seq_len:
+  value: 640
+sequence_length:
+  value: 400

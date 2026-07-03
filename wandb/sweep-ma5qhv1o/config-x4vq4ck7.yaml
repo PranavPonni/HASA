@@ -1,0 +1,12 @@
+wandb_version: 1
+
+batch_size:
+  value: 16
+hid_dim:
+  value: 256
+joint_rate:
+  value: 0.7
+lr:
+  value: 0.001
+tactile_rate:
+  value: 0.5

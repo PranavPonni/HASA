@@ -1,0 +1,28 @@
+wandb_version: 1
+
+batch_size:
+  value: 8
+capacity_mode:
+  value: fixed
+dropout:
+  value: 0
+early_stop_enabled:
+  value: false
+lr:
+  value: 5.0e-05
+num_epochs:
+  value: 500
+rec_dim:
+  value: 1024
+sequence_length:
+  value: 400
+shift_data:
+  value: 1
+temporal_blocks:
+  value: 4
+temporal_kernel_size:
+  value: 5
+test_split_fraction:
+  value: 0.2
+test_split_policy:
+  value: blocked_tail

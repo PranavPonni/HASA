@@ -1,0 +1,12 @@
+{"time":"2026-07-03T03:45:46.766817412+09:00","level":"INFO","msg":"stream: starting","core version":"0.21.1"}
+{"time":"2026-07-03T03:45:47.11229576+09:00","level":"INFO","msg":"stream: created new stream","id":"uan46a06"}
+{"time":"2026-07-03T03:45:47.112322691+09:00","level":"INFO","msg":"stream: started","id":"uan46a06"}
+{"time":"2026-07-03T03:45:47.112355752+09:00","level":"INFO","msg":"writer: started","stream_id":"uan46a06"}
+{"time":"2026-07-03T03:45:47.112399764+09:00","level":"INFO","msg":"handler: started","stream_id":"uan46a06"}
+{"time":"2026-07-03T03:45:47.112406234+09:00","level":"INFO","msg":"sender: started","stream_id":"uan46a06"}
+{"time":"2026-07-03T05:44:03.224375552+09:00","level":"INFO","msg":"handler: operation stats","stats":{"operations":[{"desc":"uploading config.yaml","runtime_seconds":0.469884712,"progress":"2.6KB/2.6KB"},{"desc":"uploading history steps 10-10, summary","runtime_seconds":0.157787309}],"total_operations":2}}
+{"time":"2026-07-03T05:44:03.243927654+09:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2026-07-03T05:44:04.229000704+09:00","level":"INFO","msg":"stream: closing","id":"uan46a06"}
+{"time":"2026-07-03T05:44:04.229015208+09:00","level":"INFO","msg":"handler: closed","stream_id":"uan46a06"}
+{"time":"2026-07-03T05:44:04.229058271+09:00","level":"INFO","msg":"sender: closed","stream_id":"uan46a06"}
+{"time":"2026-07-03T05:44:04.229065225+09:00","level":"INFO","msg":"stream: closed","id":"uan46a06"}

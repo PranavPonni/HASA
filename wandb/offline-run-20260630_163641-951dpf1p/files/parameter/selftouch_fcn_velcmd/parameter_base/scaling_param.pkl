@@ -1,0 +1,1 @@
+/root/motionlearning/parameter/selftouch_fcn_velcmd/parameter_base/scaling_param.pkl

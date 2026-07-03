@@ -1,0 +1,6 @@
+{"time":"2026-07-03T16:09:21.521631324+09:00","level":"INFO","msg":"stream: starting","core version":"0.21.1"}
+{"time":"2026-07-03T16:09:21.859489877+09:00","level":"INFO","msg":"stream: created new stream","id":"ggeb77dc"}
+{"time":"2026-07-03T16:09:21.859512101+09:00","level":"INFO","msg":"stream: started","id":"ggeb77dc"}
+{"time":"2026-07-03T16:09:21.859537414+09:00","level":"INFO","msg":"writer: started","stream_id":"ggeb77dc"}
+{"time":"2026-07-03T16:09:21.859576074+09:00","level":"INFO","msg":"sender: started","stream_id":"ggeb77dc"}
+{"time":"2026-07-03T16:09:21.85958719+09:00","level":"INFO","msg":"handler: started","stream_id":"ggeb77dc"}
