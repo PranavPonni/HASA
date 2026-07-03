@@ -30,6 +30,7 @@ from training_speed_utils import (
     empty_cuda_cache,
     make_grad_scaler,
     maybe_watch_model,
+    selftouch_loss_step,
     should_run_period,
     wandb_init_kwargs,
 )
@@ -85,11 +86,20 @@ class RNN_controller(AbstractController):
 
     def train_controller(self, sweep=False):
         configure_torch_threads(self.mode_param)
-        self.device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+        device_setting = str(self.mode_param.get('device', os.environ.get('SELFTOUCH_DEVICE', 'auto'))).lower()
+        if device_setting == 'cpu':
+            self.device = torch.device('cpu')
+        elif device_setting.startswith('cuda') and torch.cuda.is_available():
+            self.device = torch.device('cuda:0')
+        elif device_setting in {'auto', ''}:
+            self.device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+        else:
+            print(f"[warn] requested device '{device_setting}' is unavailable; falling back to CPU")
+            self.device = torch.device('cpu')
         print("Device: ", self.device)
 
-        batch_size = int(self.mode_param["batch_size"])
-        eval_batch_size = int(self.mode_param.get("eval_batch_size", 0) or 0)
+        batch_size = int(os.environ.get("SELFTOUCH_BATCH_SIZE", self.mode_param["batch_size"]))
+        eval_batch_size = int(os.environ.get("SELFTOUCH_EVAL_BATCH_SIZE", self.mode_param.get("eval_batch_size", 0)) or 0)
         total_epoch = int(self.mode_param["num_epochs"])
         lr = float(self.mode_param["lr"])
         model_save_iter = int(self.mode_param["model_save_iter"])
@@ -100,6 +110,8 @@ class RNN_controller(AbstractController):
         wandb_save_scaling = _as_bool(self.mode_param.get("wandb_save_scaling", False))
         empty_cache_after_save = _as_bool(self.mode_param.get("empty_cache_after_save", True))
         empty_cache_after_eval = _as_bool(self.mode_param.get("empty_cache_after_eval", False))
+        train_step_sleep_seconds = float(os.environ.get("SELFTOUCH_TRAIN_STEP_SLEEP", self.mode_param.get("train_step_sleep_seconds", 0.0)) or 0.0)
+        max_train_batches_per_epoch = int(os.environ.get("SELFTOUCH_MAX_TRAIN_BATCHES", self.mode_param.get("max_train_batches_per_epoch", 0)) or 0)
 
         self.sequence_length = int(self.dataset_param["sequence_length"])
         self.shift_data = int(self.dataset_param["shift_data"])
@@ -136,6 +148,7 @@ class RNN_controller(AbstractController):
             f" | train_samples={len(dataset)}"
             f" | batch_size={batch_size}"
             f" | train_steps_per_epoch={train_batches_per_epoch}"
+            f" | max_train_steps={max_train_batches_per_epoch or 'all'}"
         )
         scaling_path = os.path.join(self.dataset_param["param_file_dir"], "scaling_param.pkl")
         if wandb_save_scaling and os.path.isfile(scaling_path):
@@ -168,7 +181,11 @@ class RNN_controller(AbstractController):
             for data in dataset:
                 self.model.train()
                 self.calc_loss_func(data,"train")
+                if train_step_sleep_seconds > 0.0:
+                    time.sleep(train_step_sleep_seconds)
                 train_steps += 1
+                if max_train_batches_per_epoch > 0 and train_steps >= max_train_batches_per_epoch:
+                    break
             train_seconds = time.perf_counter() - train_start
 
             self.model.eval()
@@ -477,35 +494,15 @@ class RNN_controller(AbstractController):
         return averaged, preds
 
     def calc_loss_func(self, data, mode="train"):
-        if mode == "train":
-            self.optimizer.zero_grad(set_to_none=True)
-
         self._assert_cpu_data(data, mode)
-        data = {key: val.to(self.device) for key, val in data.items()}
-
-        with autocast(getattr(self, "use_amp", False)):
-            (total_loss, loss_index, loss_thumb, loss_middle), \
-                (tactile_index_tip, tactile_thumb_tip, tactile_middle_tip) = \
-                self.model.forward_loss(**data, loss_coef=self.loss_coef)
-
-        if mode == "train":
-            if getattr(self, "use_amp", False):
-                self.scaler.scale(total_loss).backward()
-                grad_clip = float(self.mode_param.get("grad_clip_norm", 0.0) or 0.0)
-                if grad_clip > 0.0:
-                    self.scaler.unscale_(self.optimizer)
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), grad_clip)
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
-            else:
-                total_loss.backward()
-                grad_clip = float(self.mode_param.get("grad_clip_norm", 0.0) or 0.0)
-                if grad_clip > 0.0:
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), grad_clip)
-                self.optimizer.step()
-
-        return (
-            total_loss, loss_index, loss_thumb, loss_middle
-        ), (
-            tactile_index_tip, tactile_thumb_tip, tactile_middle_tip
+        return selftouch_loss_step(
+            model=self.model,
+            optimizer=self.optimizer,
+            scaler=getattr(self, "scaler", None),
+            loss_coef=self.loss_coef,
+            data=data,
+            device=self.device,
+            mode=mode,
+            use_amp=getattr(self, "use_amp", False),
+            mode_param=self.mode_param,
         )

@@ -179,13 +179,168 @@ def empty_cuda_cache(device):
         pass
 
 
+def data_batch_size(data):
+    import torch
+
+    for value in data.values():
+        if torch.is_tensor(value) and value.ndim > 0:
+            return int(value.shape[0])
+    return 0
+
+
+def slice_data_batch(data, start, end):
+    import torch
+
+    output = {}
+    for key, value in data.items():
+        if torch.is_tensor(value) and value.ndim > 0 and value.shape[0] >= end:
+            output[key] = value[start:end]
+        else:
+            output[key] = value
+    return output
+
+
+def move_batch_to_device(data, device):
+    import torch
+
+    return {
+        key: value.to(device, non_blocking=True) if torch.is_tensor(value) else value
+        for key, value in data.items()
+    }
+
+
+def micro_batch_size(mode_param, mode, batch_size):
+    mode_param = mode_param or {}
+    if mode == "train":
+        configured = os.environ.get(
+            "SELFTOUCH_TRAIN_MICRO_BATCH_SIZE",
+            mode_param.get("train_micro_batch_size", 0),
+        )
+    else:
+        configured = os.environ.get(
+            "SELFTOUCH_EVAL_MICRO_BATCH_SIZE",
+            mode_param.get("eval_micro_batch_size", 0),
+        )
+    try:
+        size = int(configured or 0)
+    except (TypeError, ValueError):
+        size = 0
+    if size <= 0 or batch_size <= 0:
+        return 0
+    return max(1, min(size, int(batch_size)))
+
+
+def _optimizer_step(model, optimizer, scaler, enabled_amp, mode_param):
+    import torch
+
+    grad_clip = float((mode_param or {}).get("grad_clip_norm", 0.0) or 0.0)
+    if enabled_amp:
+        if grad_clip > 0.0:
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+        scaler.step(optimizer)
+        scaler.update()
+    else:
+        if grad_clip > 0.0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+        optimizer.step()
+
+
+def _forward_loss(model, data, loss_coef, enabled_amp):
+    with autocast(enabled_amp):
+        return model.forward_loss(**data, loss_coef=loss_coef)
+
+
+def selftouch_loss_step(
+    *,
+    model,
+    optimizer,
+    scaler,
+    loss_coef,
+    data,
+    device,
+    mode,
+    use_amp,
+    mode_param,
+):
+    """Run one self-touch loss step, optionally with true train micro-batching."""
+    import torch
+
+    is_train = mode == "train"
+    enabled_amp = bool(use_amp) and getattr(device, "type", "") == "cuda"
+    batch_count = data_batch_size(data)
+    micro_size = micro_batch_size(mode_param, mode, batch_count)
+
+    if is_train and optimizer is not None:
+        optimizer.zero_grad(set_to_none=True)
+
+    if micro_size <= 0 or micro_size >= batch_count:
+        data_on_device = move_batch_to_device(data, device)
+        context = torch.enable_grad() if is_train else torch.no_grad()
+        with context:
+            losses, preds = _forward_loss(model, data_on_device, loss_coef, enabled_amp)
+        total_loss = losses[0]
+        if is_train:
+            if enabled_amp:
+                scaler.scale(total_loss).backward()
+            else:
+                total_loss.backward()
+            _optimizer_step(model, optimizer, scaler, enabled_amp, mode_param)
+        return losses, preds
+
+    notice_name = f"_selftouch_{mode}_microbatch_notice"
+    if not getattr(model, notice_name, False):
+        accumulation = (batch_count + micro_size - 1) // micro_size
+        print(
+            f"[cuda] {mode} micro-batch={micro_size}"
+            f" | effective_batch={batch_count}"
+            f" | accumulation_steps={accumulation}"
+        )
+        setattr(model, notice_name, True)
+
+    weighted_losses = [0.0, 0.0, 0.0, 0.0]
+    pred_chunks = [[], [], []]
+    total_count = 0
+    context = torch.enable_grad() if is_train else torch.no_grad()
+    with context:
+        for start in range(0, batch_count, micro_size):
+            end = min(start + micro_size, batch_count)
+            chunk_count = end - start
+            weight = float(chunk_count) / float(max(batch_count, 1))
+            chunk = move_batch_to_device(slice_data_batch(data, start, end), device)
+            losses, preds = _forward_loss(model, chunk, loss_coef, enabled_amp)
+            total_loss, loss_index, loss_thumb, loss_middle = losses
+            for idx, loss_value in enumerate((total_loss, loss_index, loss_thumb, loss_middle)):
+                weighted_losses[idx] += float(loss_value.detach()) * weight
+            if is_train:
+                scaled_loss = total_loss * weight
+                if enabled_amp:
+                    scaler.scale(scaled_loss).backward()
+                else:
+                    scaled_loss.backward()
+            else:
+                for idx, pred in enumerate(preds):
+                    pred_chunks[idx].append(pred.detach().cpu())
+            total_count += chunk_count
+            del chunk, losses, preds, total_loss, loss_index, loss_thumb, loss_middle
+
+    if is_train:
+        _optimizer_step(model, optimizer, scaler, enabled_amp, mode_param)
+        empty = tuple(torch.empty(0) for _ in range(3))
+        return tuple(weighted_losses), empty
+
+    averaged = tuple(float(value) for value in weighted_losses)
+    preds = tuple(torch.cat(chunks, dim=0) for chunks in pred_chunks)
+    return averaged, preds
+
+
 def configure_cuda_memory_fraction(mode_param, device):
     if getattr(device, "type", "") != "cuda":
         return None
 
-    fraction = _float_or_none((mode_param or {}).get("cuda_memory_fraction"))
+    fraction = _float_or_none(os.environ.get("SELFTOUCH_CUDA_MEMORY_FRACTION"))
     if fraction is None:
-        fraction = _float_or_none(os.environ.get("SELFTOUCH_CUDA_MEMORY_FRACTION"))
+        fraction = _float_or_none((mode_param or {}).get("cuda_memory_fraction"))
     if fraction is None:
         return None
     if not 0.0 < fraction <= 1.0:

@@ -25,8 +25,11 @@ from training_speed_utils import (
     apply_lr_schedule,
     amp_enabled,
     autocast,
+    configure_cuda_memory_fraction,
+    configure_torch_threads,
     make_grad_scaler,
     maybe_watch_model,
+    selftouch_loss_step,
     should_run_period,
 )
 from selftouch_plot_utils import active_loss_coef, plot_tactile_temporal_profiles
@@ -39,18 +42,31 @@ FINGER_KEYS = ["tactile_index_tip", "tactile_thumb_tip", "tactile_middle_tip"]
 class RNN_controller(AbstractController):
     def __init__(self, model_param, mode_param, dataset_param,config_param):
         super().__init__(model_param, mode_param, dataset_param,config_param)
-        torch.cuda.init()
+        if torch.cuda.is_available() and str(mode_param.get("device", os.environ.get("SELFTOUCH_DEVICE", "auto"))).lower() != "cpu":
+            torch.cuda.init()
 
     def train_controller(self, sweep=False):
-        self.device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+        configure_torch_threads(self.mode_param)
+        device_setting = str(self.mode_param.get('device', os.environ.get('SELFTOUCH_DEVICE', 'auto'))).lower()
+        if device_setting == 'cpu':
+            self.device = torch.device('cpu')
+        elif device_setting.startswith('cuda') and torch.cuda.is_available():
+            self.device = torch.device('cuda:0')
+        elif device_setting in {'auto', ''}:
+            self.device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+        else:
+            print(f"[warn] requested device '{device_setting}' is unavailable; falling back to CPU")
+            self.device = torch.device('cpu')
         print("Device: ", self.device)
 
-        batch_size = self.mode_param["batch_size"]
+        batch_size = int(os.environ.get("SELFTOUCH_BATCH_SIZE", self.mode_param["batch_size"]))
         total_epoch = self.mode_param["num_epochs"]
         lr = self.mode_param["lr"]
         model_save_iter = self.mode_param["model_save_iter"]
         eval_every = self.mode_param.get("eval_every", 1)
         plot_every = self.mode_param.get("plot_every", eval_every)
+        train_step_sleep_seconds = float(os.environ.get("SELFTOUCH_TRAIN_STEP_SLEEP", self.mode_param.get("train_step_sleep_seconds", 0.0)) or 0.0)
+        max_train_batches_per_epoch = int(os.environ.get("SELFTOUCH_MAX_TRAIN_BATCHES", self.mode_param.get("max_train_batches_per_epoch", 0)) or 0)
 
         self.sequence_length = self.dataset_param["sequence_length"]
         self.shift_data = self.dataset_param["shift_data"]
@@ -58,6 +74,7 @@ class RNN_controller(AbstractController):
         self.loss_coef = active_loss_coef(self.mode_param["loss_coef"], combinations)
 
         
+        configure_cuda_memory_fraction(self.mode_param, self.device)
         self.model = SelfTouch(self.model_param).to(self.device)
         os.makedirs(self.model_param["model_save_path"], exist_ok=True)
         plot_dir = os.path.join(self.model_param["model_save_path"], "plots")
@@ -83,9 +100,15 @@ class RNN_controller(AbstractController):
 
         for epoch in range(total_epoch):
             current_lr = apply_lr_schedule(self.optimizer, lr, epoch, self.mode_param)
+            train_steps = 0
             for data in dataset:
                 self.model.train()
                 self.calc_loss_func(data,"train")
+                if train_step_sleep_seconds > 0.0:
+                    time.sleep(train_step_sleep_seconds)
+                train_steps += 1
+                if max_train_batches_per_epoch > 0 and train_steps >= max_train_batches_per_epoch:
+                    break
 
             self.model.eval()
             with torch.no_grad():
@@ -174,27 +197,14 @@ class RNN_controller(AbstractController):
             sys.exit(1)
 
     def calc_loss_func(self, data, mode="train"):
-        if mode == "train":
-            self.optimizer.zero_grad(set_to_none=True)
-
-        data = {key: val.to(self.device) for key, val in data.items()}
-
-        with autocast(getattr(self, "use_amp", False)):
-            (total_loss, loss_index, loss_thumb, loss_middle), \
-                (tactile_index_tip, tactile_thumb_tip, tactile_middle_tip) = \
-                self.model.forward_loss(**data, loss_coef=self.loss_coef)
-
-        if mode == "train":
-            if getattr(self, "use_amp", False):
-                self.scaler.scale(total_loss).backward()
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
-            else:
-                total_loss.backward()
-                self.optimizer.step()
-
-        return (
-            total_loss, loss_index, loss_thumb, loss_middle
-        ), (
-            tactile_index_tip, tactile_thumb_tip, tactile_middle_tip
+        return selftouch_loss_step(
+            model=self.model,
+            optimizer=self.optimizer,
+            scaler=getattr(self, "scaler", None),
+            loss_coef=self.loss_coef,
+            data=data,
+            device=self.device,
+            mode=mode,
+            use_amp=getattr(self, "use_amp", False),
+            mode_param=self.mode_param,
         )
