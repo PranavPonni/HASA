@@ -2,22 +2,20 @@
 __pycache__/
 *.py[cod]
 .cache/
-
-# Large model/data blobs
-*.pth
-*.pt
-*.ckpt
-*.pkl
-*.npy
-*.npz
 data_server/
-model_weight/
-wandb/
-log/
-logs/
-parameter/*/*/
-!parameter/*/parameter_base/
-!parameter/*/parameter_base/parameter_base.yaml
+.wandb-cache/
+
+# Generated model/image artifacts
+*.pth
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.webp
+*.tif
+*.tiff
+*.svg
 
 # Local editor/system files
 .vscode/
