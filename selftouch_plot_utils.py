@@ -318,6 +318,7 @@ def align_next_step_prediction(
     pred_arr: np.ndarray,
     *,
     next_step: bool = True,
+    input_offset: int = 0,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Align predictions to targets using the model training contract.
 
@@ -330,11 +331,20 @@ def align_next_step_prediction(
     pred_arr = np.asarray(pred_arr, dtype=np.float32)
 
     if raw_arr.ndim >= 3 and pred_arr.ndim >= 3:
-        if next_step and raw_arr.shape[1] > 1 and pred_arr.shape[1] > 0:
+        offset = int(input_offset or 0)
+        if next_step and raw_arr.shape[1] > 1 and pred_arr.shape[1] > 0 and offset == 0:
             steps = min(raw_arr.shape[1] - 1, pred_arr.shape[1])
             raw_cmp = raw_arr[:, 1 : 1 + steps, ...]
             pred_cmp = pred_arr[:, :steps, ...]
             timesteps = np.arange(steps)
+        elif next_step and raw_arr.shape[1] > 1 and pred_arr.shape[1] > 0:
+            from selftouch_offset_utils import target_window
+
+            target_start, target_stop = target_window(raw_arr.shape[1], offset)
+            steps = min(max(target_stop - target_start, 0), pred_arr.shape[1])
+            raw_cmp = raw_arr[:, target_start : target_start + steps, ...]
+            pred_cmp = pred_arr[:, :steps, ...]
+            timesteps = np.arange(target_start, target_start + steps)
         else:
             steps = min(raw_arr.shape[1], pred_arr.shape[1])
             raw_cmp = raw_arr[:, :steps, ...]
@@ -823,6 +833,7 @@ def plot_tactile_temporal_profiles(
             raw_arr,
             pred_arr,
             next_step=next_step,
+            input_offset=int(dataset_param.get("input_offset", 0) or 0),
         )
         is_active = name in active
 

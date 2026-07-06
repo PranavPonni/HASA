@@ -2,6 +2,7 @@ import torch
 from torch import nn
 
 from selftouch_loss_utils import active_tactile_loss
+from selftouch_offset_utils import target_window
 
 
 class DilatedTemporalBlock(nn.Module):
@@ -41,6 +42,7 @@ class SelfTouch(nn.Module):
         super().__init__()
         self.hand_dim = int(param["hand_dim"])
         self.tactile_dim = int(param["tactile_dim"])
+        self.input_offset = int(param.get("input_offset", 0))
         self.input_modalities = tuple(param.get("input_modalities", self.INPUT_MODALITIES))
         if self.input_modalities != self.INPUT_MODALITIES:
             raise ValueError("selftouch_fcn_pos requires hand_jnt_pos only")
@@ -112,12 +114,28 @@ class SelfTouch(nn.Module):
             cfg["tactile_raw_slope"] = slopes[tactile_key]
         return cfg
 
+    def _target_window(self, num_timesteps):
+        start, stop = target_window(num_timesteps, self.input_offset)
+        if stop <= start:
+            raise ValueError(
+                f"input_offset={self.input_offset} leaves no valid target timesteps "
+                f"for sequence length {num_timesteps}"
+            )
+        return start, stop
+
     def _pos_features(self, hand_jnt_pos, selftouch_combo=None, selftouch_phase=None):
-        pos = hand_jnt_pos[:, 1:, :]
+        target_start, target_stop = self._target_window(hand_jnt_pos.shape[1])
+        input_start = target_start + self.input_offset
+        input_stop = target_stop + self.input_offset
+        pos = hand_jnt_pos[:, input_start:input_stop, :]
         features = [pos]
 
         if self.use_deltas:
-            prev = hand_jnt_pos[:, :-1, :]
+            if input_start > 0:
+                prev = hand_jnt_pos[:, input_start - 1 : input_stop - 1, :]
+            else:
+                prev_tail = hand_jnt_pos[:, input_start : max(input_stop - 1, input_start), :]
+                prev = torch.cat([pos[:, :1, :], prev_tail], dim=1)
             delta = pos - prev
             delta_prev = torch.cat([delta[:, :1, :], delta[:, :-1, :]], dim=1)
             accel = delta - delta_prev
@@ -127,14 +145,14 @@ class SelfTouch(nn.Module):
             if selftouch_combo is None:
                 combo = pos.new_zeros(pos.shape[0], pos.shape[1], self.combo_dim)
             else:
-                combo = selftouch_combo[:, 1:, :].to(device=pos.device, dtype=pos.dtype)
+                combo = selftouch_combo[:, target_start:target_stop, :].to(device=pos.device, dtype=pos.dtype)
             features.append(combo)
 
         if self.use_phase:
             if selftouch_phase is None:
                 phase = pos.new_zeros(pos.shape[0], pos.shape[1], self.phase_dim)
             else:
-                phase = selftouch_phase[:, 1:, :].to(device=pos.device, dtype=pos.dtype)
+                phase = selftouch_phase[:, target_start:target_stop, :].to(device=pos.device, dtype=pos.dtype)
             features.append(phase)
 
         return torch.cat(features, dim=-1)
@@ -185,6 +203,7 @@ class SelfTouch(nn.Module):
         **_unused,
     ):
         loss_coef = loss_coef or {}
+        target_start, target_stop = self._target_window(tactile_index_tip.shape[1])
         idx_pred, thumb_pred, middle_pred = self.forward(
             hand_jnt_pos=hand_jnt_pos,
             selftouch_combo=selftouch_combo,
@@ -193,17 +212,17 @@ class SelfTouch(nn.Module):
 
         loss_index = active_tactile_loss(
             idx_pred,
-            tactile_index_tip[:, 1:, :],
+            tactile_index_tip[:, target_start:target_stop, :],
             self._finger_loss_coef(loss_coef, "tactile_index_tip"),
         )
         loss_thumb = active_tactile_loss(
             thumb_pred,
-            tactile_thumb_tip[:, 1:, :],
+            tactile_thumb_tip[:, target_start:target_stop, :],
             self._finger_loss_coef(loss_coef, "tactile_thumb_tip"),
         )
         loss_middle = active_tactile_loss(
             middle_pred,
-            tactile_middle_tip[:, 1:, :],
+            tactile_middle_tip[:, target_start:target_stop, :],
             self._finger_loss_coef(loss_coef, "tactile_middle_tip"),
         )
 

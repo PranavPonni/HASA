@@ -22,6 +22,7 @@ import data_preproc as dp
 import wandb
 import pdb
 from training_speed_utils import get_wandb_entity, wandb_service_settings
+from selftouch_offset_utils import input_offset_from_params
 
 
 class MainExectutor:
@@ -34,6 +35,7 @@ class MainExectutor:
         self.config=config
         self.dataset_param = params["Dataset"]
         self.required_param = params["Required"]
+        self.sync_input_offset(params)
         self.model_param["model_save_path"]=self.get_model_save_path(param_file)
         self.model_param["model_name"]=os.path.basename(os.path.dirname(self.model_param["model_save_path"]))
         self.dataset_param["param_file_dir"]=os.path.dirname(param_file)
@@ -71,6 +73,13 @@ class MainExectutor:
             wandb.agent(sweep_id, self.sweep, **agent_kwargs)
         else:
             raise ValueError("Invalid mode: {}".format(mode))
+
+    def sync_input_offset(self, params):
+        offset = input_offset_from_params(params.get("Dataset"), params.get("Model"), default=0)
+        params.setdefault("Dataset", {})["input_offset"] = offset
+        params.setdefault("Model", {})["input_offset"] = offset
+        self.dataset_param = params["Dataset"]
+        self.model_param = params["Model"]
 
     def train(self,train_params):
         
