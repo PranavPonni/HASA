@@ -5,8 +5,13 @@ __pycache__/
 data_server/
 .wandb-cache/
 
-# Generated model/image artifacts
+# Large/generated artifacts
 *.pth
+*.pt
+*.ckpt
+*.pkl
+*.npy
+*.npz
 *.png
 *.jpg
 *.jpeg
@@ -16,6 +21,17 @@ data_server/
 *.tif
 *.tiff
 *.svg
+model_weight/
+
+# Weights & Biases local runs/logs
+wandb/
+wandb/**/*.log
+log/
+logs/
+parameter/*/*/
+!parameter/*/parameter_base/
+!parameter/*/parameter_base/parameter_base.yaml
+.log
 
 # Local editor/system files
 .vscode/

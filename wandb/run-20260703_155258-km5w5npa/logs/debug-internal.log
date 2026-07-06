@@ -1,6 +1,0 @@
-{"time":"2026-07-03T15:52:58.25581709+09:00","level":"INFO","msg":"stream: starting","core version":"0.21.1"}
-{"time":"2026-07-03T15:52:58.668658567+09:00","level":"INFO","msg":"stream: created new stream","id":"km5w5npa"}
-{"time":"2026-07-03T15:52:58.668691536+09:00","level":"INFO","msg":"stream: started","id":"km5w5npa"}
-{"time":"2026-07-03T15:52:58.668703563+09:00","level":"INFO","msg":"writer: started","stream_id":"km5w5npa"}
-{"time":"2026-07-03T15:52:58.668750921+09:00","level":"INFO","msg":"handler: started","stream_id":"km5w5npa"}
-{"time":"2026-07-03T15:52:58.668782545+09:00","level":"INFO","msg":"sender: started","stream_id":"km5w5npa"}

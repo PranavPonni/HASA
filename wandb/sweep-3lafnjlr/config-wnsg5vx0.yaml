@@ -1,6 +1,0 @@
-wandb_version: 1
-
-cls_rate:
-  value: 1
-noise:
-  value: 0.1
