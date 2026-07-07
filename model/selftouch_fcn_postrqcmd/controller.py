@@ -35,6 +35,7 @@ from training_speed_utils import (
     wandb_init_kwargs,
 )
 from selftouch_plot_utils import active_loss_coef, load_scaling_param, plot_tactile_temporal_profiles
+from selftouch_offset_utils import target_window
 
 
 FINGER_NAMES = ["index", "thumb", "middle"]
@@ -364,11 +365,16 @@ class RNN_controller(AbstractController):
             return
 
         means = []
+        input_offset = int(self.dataset_param.get("input_offset", 0) or 0)
+        target_start = None
+        target_stop = None
         for key in FINGER_KEYS:
             value = train_data.get(key)
             if value is None or not torch.is_tensor(value) or value.ndim < 3:
                 return
-            target = value[:, 1:, :] if value.shape[1] > 1 else value
+            if target_start is None:
+                target_start, target_stop = target_window(int(value.shape[1]), input_offset)
+            target = value[:, target_start:target_stop, :] if value.shape[1] > 1 else value
             means.append(target.mean(dim=(0, 1)))
         bias = torch.cat(means, dim=0).to(device=self.device, dtype=output_net.bias.dtype)
         if bias.numel() != output_net.bias.numel():

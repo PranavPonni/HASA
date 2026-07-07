@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import pdb
 import data_preproc
+import json
 import os
 import numpy as np
 import visualizer as vis
@@ -9,6 +10,7 @@ from dataloader_base import BaseDataLoader
 import einops
 import gc
 import pdb
+from selftouch_offset_utils import base_target_count, target_window, valid_target_count
 
 TACTILE_KEYS = [
     "tactile_index_tip",
@@ -48,6 +50,7 @@ class CustomDataLoader(BaseDataLoader):
         del dir_data
         gc.collect()
         print("splitted train and test")
+        self.write_temporal_offset_diagnostics(train_dir_data, test_dir_data)
         
         scaling_path = os.path.join(self.dataset_param["param_file_dir"], "scaling_param.pkl")
         if os.path.isfile(scaling_path):
@@ -139,6 +142,155 @@ class CustomDataLoader(BaseDataLoader):
                     features.extend([np.sin(angle), np.cos(angle)])
                 val["selftouch_phase"] = np.stack(features, axis=-1).astype(np.float32, copy=False)
         return data
+
+    def write_temporal_offset_diagnostics(self, train_dir_data, test_dir_data):
+        offset = int(self.dataset_param.get("input_offset", 0) or 0)
+        diagnostics = {
+            "input_offset": offset,
+            "sequence_length": int(self.dataset_param.get("sequence_length", 0) or 0),
+            "drop": {
+                "train": self._drop_stats(train_dir_data, offset),
+                "test": self._drop_stats(test_dir_data, offset),
+                "all": self._drop_stats({**train_dir_data, **test_dir_data}, offset),
+            },
+        }
+        if offset > 0:
+            diagnostics["leakage"] = self._leakage_stats({**train_dir_data, **test_dir_data}, offset)
+
+        self._print_temporal_offset_diagnostics(diagnostics)
+        param_dir = self.dataset_param.get("param_file_dir")
+        if param_dir:
+            os.makedirs(param_dir, exist_ok=True)
+            path = os.path.join(param_dir, "temporal_offset_diagnostics.json")
+            with open(path, "w") as f:
+                json.dump(diagnostics, f, indent=2, sort_keys=True)
+            print(f"[offset] diagnostics written: {path}")
+
+    def _episode_timesteps(self, episode):
+        for key in (*TACTILE_KEYS, *JOINT_KEYS, "selftouch_combo", "selftouch_phase"):
+            value = episode.get(key)
+            if value is not None:
+                arr = np.asarray(value)
+                if arr.ndim > 0:
+                    return int(arr.shape[0])
+        return int(self.dataset_param.get("sequence_length", 0) or 0)
+
+    def _drop_stats(self, split_data, offset):
+        base = 0
+        valid = 0
+        episodes = 0
+        target_start = None
+        target_stop = None
+        for episode in split_data.values():
+            timesteps = self._episode_timesteps(episode)
+            start, stop = target_window(timesteps, offset)
+            if target_start is None:
+                target_start = start
+                target_stop = stop
+            base += base_target_count(timesteps)
+            valid += valid_target_count(timesteps, offset)
+            episodes += 1
+        dropped = max(0, base - valid)
+        return {
+            "episodes": episodes,
+            "base_samples": base,
+            "valid_samples": valid,
+            "dropped_samples": dropped,
+            "drop_fraction": float(dropped / base) if base else 0.0,
+            "target_start": int(target_start or 0),
+            "target_stop": int(target_stop or 0),
+        }
+
+    def _episode_tactile_keys(self, episode_name, episode):
+        text = str(episode_name).lower().replace("-", "_")
+        if "thumb_index" in text:
+            preferred = ("tactile_thumb_tip", "tactile_index_tip")
+        elif "thumb_middle" in text:
+            preferred = ("tactile_thumb_tip", "tactile_middle_tip")
+        elif "index_middle" in text:
+            preferred = ("tactile_index_tip", "tactile_middle_tip")
+        else:
+            preferred = ("tactile_index_tip", "tactile_thumb_tip", "tactile_middle_tip")
+        return [key for key in preferred if key in episode]
+
+    def _max_abs_tactile(self, episode, keys, indices):
+        values = []
+        for key in keys:
+            arr = np.asarray(episode[key], dtype=np.float32)
+            if arr.ndim < 2 or len(indices) == 0:
+                continue
+            selected = arr[indices]
+            values.append(np.nanmax(np.abs(selected.reshape(selected.shape[0], -1)), axis=1))
+        if not values:
+            return np.zeros((len(indices),), dtype=np.float32)
+        return np.maximum.reduce(values)
+
+    def _leakage_stats(self, split_data, offset):
+        contact_threshold = float(self.dataset_param.get("leakage_contact_abs_threshold", 300.0))
+        precursor_threshold = float(
+            self.dataset_param.get("leakage_precursor_abs_threshold", contact_threshold * 0.5)
+        )
+        flag_threshold = float(self.dataset_param.get("leakage_flag_fraction_threshold", 0.5))
+        target_contact_samples = 0
+        future_contact_or_precursor_samples = 0
+        considered_samples = 0
+        for episode_name, episode in split_data.items():
+            timesteps = self._episode_timesteps(episode)
+            target_start, target_stop = target_window(timesteps, offset)
+            if target_stop <= target_start:
+                continue
+            target_indices = np.arange(target_start, target_stop, dtype=np.int64)
+            future_indices = target_indices + int(offset)
+            keys = self._episode_tactile_keys(episode_name, episode)
+            target_max = self._max_abs_tactile(episode, keys, target_indices)
+            future_max = self._max_abs_tactile(episode, keys, future_indices)
+            target_contact = target_max >= contact_threshold
+            considered_samples += int(target_indices.size)
+            target_contact_samples += int(target_contact.sum())
+            future_contact_or_precursor_samples += int(
+                (target_contact & (future_max >= precursor_threshold)).sum()
+            )
+        fraction = (
+            float(future_contact_or_precursor_samples / target_contact_samples)
+            if target_contact_samples
+            else 0.0
+        )
+        return {
+            "contact_abs_threshold": contact_threshold,
+            "precursor_abs_threshold": precursor_threshold,
+            "target_contact_samples": target_contact_samples,
+            "future_contact_or_precursor_samples": future_contact_or_precursor_samples,
+            "fraction": fraction,
+            "flag_fraction_threshold": flag_threshold,
+            "flagged": bool(fraction >= flag_threshold and target_contact_samples > 0),
+            "considered_samples": considered_samples,
+        }
+
+    def _print_temporal_offset_diagnostics(self, diagnostics):
+        drop = diagnostics["drop"]["all"]
+        print(
+            "[offset] input_offset={offset:+d} target=[{start},{stop}) "
+            "dropped={dropped}/{base} ({frac:.3%})".format(
+                offset=int(diagnostics["input_offset"]),
+                start=int(drop["target_start"]),
+                stop=int(drop["target_stop"]),
+                dropped=int(drop["dropped_samples"]),
+                base=int(drop["base_samples"]),
+                frac=float(drop["drop_fraction"]),
+            )
+        )
+        leakage = diagnostics.get("leakage")
+        if leakage:
+            msg = (
+                "[offset] future-label leakage check: "
+                f"{leakage['future_contact_or_precursor_samples']}/"
+                f"{leakage['target_contact_samples']} target-contact samples "
+                f"({leakage['fraction']:.1%}) already show contact/precursor "
+                f"at t+{int(diagnostics['input_offset'])}"
+            )
+            if leakage.get("flagged"):
+                msg += " [FLAGGED]"
+            print(msg)
 
 
     def get_test_data(self):
