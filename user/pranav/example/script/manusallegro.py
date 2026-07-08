@@ -264,15 +264,15 @@ class ManusToAllegroPublisher(Node):
     # -----------------------------------------------------
     def set_target_left(self, q_deg):
         # C++の配列に合わせる
-        dir_ = [ 1,  0.1,  1,  1,
+        dir_ = [ 1,  0.4,  1,  1,
                 -1.0,  1,  1,  1,
                 -1.0,  1,  1,  1,
                 -1.0,  1,  1,  1,
                 0.5, -0.5,  1,  1.2]
 
-        calib = [1, 1.2, 1.5, 1.2,
+        calib = [1, 1.35, 1.6, 1.2,
                  1.4, 1, 1.2, 1.2,
-                 1.5, 1, 1.2, 1.2,
+                 1.47, 0.98, 1.18, 1.18,
                  1.7, 1, 1, 1,
                  0.5, 0.5, 1, 1]
 
@@ -287,8 +287,8 @@ class ManusToAllegroPublisher(Node):
         for i in range(2, 16):
             qd[i] = q_deg[i] * (PI / 180.0)
 
-        # ---- Thumb PIP offset: ensure joint 14 always has some command ----
-        qd[2] = qd[2] + 30.0 * (PI / 180.0)
+        # ---- Thumb PIP offset: preload enough to lift while still allowing return motion ----
+        qd[2] = qd[2] + 24.0 * (PI / 180.0)
 
         # ---- Thumb Spread offset: ensure joint 12 always has some command ----
         qd[0] = qd[0] + 18.0 * (PI / 180.0)
