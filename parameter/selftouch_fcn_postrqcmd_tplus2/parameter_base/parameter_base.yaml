@@ -84,7 +84,7 @@ Model:
   # 30 taxels x 3 axes (Fx,Fy,Fz) per finger = 90
   tactile_dim: 90
   rec_dim: 256
-  dropout: 0.04
+  dropout: 0.06
   model: selftouch_fcn_postrqcmd_tplus2
   input_modalities:
   - hand_jnt_pos
@@ -92,16 +92,16 @@ Model:
   - hand_jnt_cmd_pos
   model_name: selftouch_fcn_postrqcmd_tplus2
   architecture: context_temporal_mean_residual
-  hidden_dim: 256
+  hidden_dim: 384
   # Encoder: Linear(input_dim->64) GELU Dropout(0.2) Linear(64->128) GELU
-  encoder_dim: 192
+  encoder_dim: 256
   # Decoder: Dropout(0.2) Linear(128->64) GELU Linear(64->188) GELU
-  decoder_dim: 256
+  decoder_dim: 384
   # Decoder projection width; final tactile output = idx(90) + thb(90) + middle(90)
-  decoder_out_dim: 256
+  decoder_out_dim: 384
 
-  temporal_blocks: 6
-  temporal_kernel_size: 9
+  temporal_blocks: 8
+  temporal_kernel_size: 11
   temporal_dilations: &id001
   - 1
   - 2
@@ -115,6 +115,13 @@ Model:
   phase_dim: 10
   use_mean_residual_head: true
   input_offset: 2
+  use_tactile_history: true
+  tactile_history_steps: 5
+  tactile_history_fingers:
+  - index
+  - thumb
+  - middle
+  temporal_window_steps: 20
 Motion:
 
 Required:
@@ -123,10 +130,10 @@ Required:
 
 Test:
   loss_coef:
-    tactile_index_tip: 2.5
+    tactile_index_tip: 3.0
     tactile_thumb_tip: 0.8
-    tactile_middle_tip: 3.0
-    tactile_loss: mae
+    tactile_middle_tip: 3.5
+    tactile_loss: huber
     tactile_mae_weight: 4.0
     tactile_raw_l1_weight: 8.0
     tactile_raw_huber_weight: 1.0
@@ -155,11 +162,34 @@ Test:
     tactile_amplitude_weight: 0.1
     tactile_taxel_profile_weight: 2.0
     tactile_spatial_corr_weight: 0.4
-    tactile_peak_weight: 0.2
+    tactile_peak_weight: 0.35
     tactile_intensity_weight: 0.2
     tactile_topk_ratio: 0.12
-  model_load_path: 
-    /root/motionlearning/model_weight/selftouch_fcn_postrqcmd_tplus2/parameter_base/epoch0.pth
+    tactile_huber_beta: 0.04
+    tactile_contact_mae_weight: 0.75
+    tactile_no_contact_mae_weight: 0.1
+    tactile_contact_ratio: 0.12
+    tactile_contact_weight: 0.15
+    tactile_contact_temperature: 0.08
+    tactile_active_threshold_ratio: 0.08
+    tactile_active_weight: 0.35
+    tactile_topk_weight: 0.3
+    tactile_pinball_weight: 0.05
+    tactile_pinball_quantile: 0.9
+    tactile_finger_loss:
+      index:
+        tactile_contact_mae_weight: 1.0
+        tactile_topk_weight: 0.45
+        tactile_peak_weight: 0.5
+      thumb:
+        tactile_contact_mae_weight: 0.55
+        tactile_topk_weight: 0.25
+        tactile_peak_weight: 0.25
+      middle:
+        tactile_contact_mae_weight: 1.0
+        tactile_topk_weight: 0.45
+        tactile_peak_weight: 0.5
+  model_load_path: /root/motionlearning/model_weight/selftouch_fcn_postrqcmd_tplus2/parameter_base/epoch0.pth
 
 Train:
   # --- Paper Section IV-A: Adam, lr=0.001, batch_size=100, 20000 epochs ---
@@ -183,10 +213,10 @@ Train:
   wandb_save_scaling: false
   num_epochs: 500
   loss_coef:
-    tactile_index_tip: 2.5
+    tactile_index_tip: 3.0
     tactile_thumb_tip: 0.8
-    tactile_middle_tip: 3.0
-    tactile_loss: mae
+    tactile_middle_tip: 3.5
+    tactile_loss: huber
     tactile_mae_weight: 4.0
     tactile_raw_l1_weight: 8.0
     tactile_raw_huber_weight: 1.0
@@ -215,9 +245,33 @@ Train:
     tactile_amplitude_weight: 0.1
     tactile_taxel_profile_weight: 2.0
     tactile_spatial_corr_weight: 0.4
-    tactile_peak_weight: 0.2
+    tactile_peak_weight: 0.35
     tactile_intensity_weight: 0.2
     tactile_topk_ratio: 0.12
+    tactile_huber_beta: 0.04
+    tactile_contact_mae_weight: 0.75
+    tactile_no_contact_mae_weight: 0.1
+    tactile_contact_ratio: 0.12
+    tactile_contact_weight: 0.15
+    tactile_contact_temperature: 0.08
+    tactile_active_threshold_ratio: 0.08
+    tactile_active_weight: 0.35
+    tactile_topk_weight: 0.3
+    tactile_pinball_weight: 0.05
+    tactile_pinball_quantile: 0.9
+    tactile_finger_loss:
+      index:
+        tactile_contact_mae_weight: 1.0
+        tactile_topk_weight: 0.45
+        tactile_peak_weight: 0.5
+      thumb:
+        tactile_contact_mae_weight: 0.55
+        tactile_topk_weight: 0.25
+        tactile_peak_weight: 0.25
+      middle:
+        tactile_contact_mae_weight: 1.0
+        tactile_topk_weight: 0.45
+        tactile_peak_weight: 0.5
   project: selftouch_fcn_postrqcmd_tplus2
   wandb_entity: hasa-handresearch-waseda-university
   early_stop_enabled: false
@@ -251,24 +305,35 @@ Sweep:
       dropout:
         values:
         - 0.04
+        - 0.06
+        - 0.08
       hidden_dim:
         values:
         - 256
+        - 384
+        - 512
       encoder_dim:
         values:
         - 192
+        - 256
       decoder_dim:
         values:
         - 256
+        - 384
+        - 512
       decoder_out_dim:
         values:
         - 256
+        - 384
+        - 512
       temporal_blocks:
         values:
         - 6
+        - 8
       temporal_kernel_size:
         values:
         - 9
+        - 11
       temporal_dilations:
         values:
         - *id001
@@ -287,6 +352,18 @@ Sweep:
       use_mean_residual_head:
         values:
         - true
+      use_tactile_history:
+        values:
+        - true
+      tactile_history_steps:
+        values:
+        - 3
+        - 5
+        - 8
+      temporal_window_steps:
+        values:
+        - 8
+        - 20
     Train:
       batch_size:
         values:

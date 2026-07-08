@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from selftouch_loss_utils import active_tactile_loss
+from selftouch_loss_utils import active_tactile_loss, finger_loss_config
 from selftouch_feature_utils import TactileHead, build_joint_features, joint_feature_dim
 
 
@@ -27,10 +27,28 @@ class SelfTouchGRUAttention(nn.Module):
         self.d_model = d_model
         self.use_joint_pos_only = bool(param.get("use_joint_pos_only", True))
         self.use_derived_features = bool(param.get("use_derived_features", False))
+        self.temporal_window_steps = max(1, int(param.get("temporal_window_steps", 1)))
+        self.use_tactile_history = bool(param.get("use_tactile_history", False))
+        self.tactile_history_steps = max(1, int(param.get("tactile_history_steps", 1)))
+        self.tactile_history_fingers = tuple(
+            param.get("tactile_history_fingers", ("index", "thumb", "middle"))
+        )
 
         self.input_dim = (
-            joint_feature_dim(hand_dim, self.use_derived_features, self.use_joint_pos_only)
-            if self.use_joint_pos_only or self.use_derived_features
+            joint_feature_dim(
+                hand_dim,
+                self.use_derived_features,
+                self.use_joint_pos_only,
+                temporal_window_steps=self.temporal_window_steps,
+                tactile_dim=self.tactile_dim,
+                use_tactile_history=self.use_tactile_history,
+                tactile_history_steps=self.tactile_history_steps,
+                tactile_history_fingers=self.tactile_history_fingers,
+            )
+            if self.use_joint_pos_only
+            or self.use_derived_features
+            or self.use_tactile_history
+            or self.temporal_window_steps > 1
             else int(param.get("input_dim", hand_dim * 4))
         )
         self.input_proj = nn.Sequential(
@@ -91,7 +109,17 @@ class SelfTouchGRUAttention(nn.Module):
             diagonal=1,
         )
 
-    def _build_input(self, hand_jnt_pos, hand_jnt_vel=None, hand_jnt_trq=None, hand_jnt_cmd_pos=None):
+    def _build_input(
+        self,
+        hand_jnt_pos,
+        hand_jnt_vel=None,
+        hand_jnt_trq=None,
+        hand_jnt_cmd_pos=None,
+        tactile_index_tip=None,
+        tactile_thumb_tip=None,
+        tactile_middle_tip=None,
+        tactile_ring_tip=None,
+    ):
         return build_joint_features(
             hand_jnt_pos,
             hand_jnt_vel,
@@ -100,6 +128,15 @@ class SelfTouchGRUAttention(nn.Module):
             next_step=True,
             use_derived_features=self.use_derived_features,
             use_joint_pos_only=self.use_joint_pos_only,
+            temporal_window_steps=self.temporal_window_steps,
+            use_tactile_history=self.use_tactile_history,
+            tactile_history_steps=self.tactile_history_steps,
+            tactile_history_fingers=self.tactile_history_fingers,
+            tactile_dim=self.tactile_dim,
+            tactile_index_tip=tactile_index_tip,
+            tactile_thumb_tip=tactile_thumb_tip,
+            tactile_middle_tip=tactile_middle_tip,
+            tactile_ring_tip=tactile_ring_tip,
         )
 
     def encode(self, hand_jnt_pos, hand_jnt_vel=None, hand_jnt_trq=None, hand_jnt_cmd_pos=None, src_key_padding_mask=None):
@@ -122,8 +159,28 @@ class SelfTouchGRUAttention(nn.Module):
         h = h + self.ffn(self.ffn_norm(h))
         return h
 
-    def forward(self, hand_jnt_pos, hand_jnt_vel=None, hand_jnt_trq=None, hand_jnt_cmd_pos=None, src_key_padding_mask=None):
-        x = self._build_input(hand_jnt_pos, hand_jnt_vel, hand_jnt_trq, hand_jnt_cmd_pos)
+    def forward(
+        self,
+        hand_jnt_pos,
+        hand_jnt_vel=None,
+        hand_jnt_trq=None,
+        hand_jnt_cmd_pos=None,
+        src_key_padding_mask=None,
+        tactile_index_tip=None,
+        tactile_thumb_tip=None,
+        tactile_middle_tip=None,
+        tactile_ring_tip=None,
+    ):
+        x = self._build_input(
+            hand_jnt_pos,
+            hand_jnt_vel,
+            hand_jnt_trq,
+            hand_jnt_cmd_pos,
+            tactile_index_tip=tactile_index_tip,
+            tactile_thumb_tip=tactile_thumb_tip,
+            tactile_middle_tip=tactile_middle_tip,
+            tactile_ring_tip=tactile_ring_tip,
+        )
         h = self.input_proj(x)
         h, _ = self.gru(h)
 
@@ -151,12 +208,32 @@ class SelfTouchGRUAttention(nn.Module):
                      src_key_padding_mask=None, tactile_middle_tip=None,
                      tactile_ring_tip=None, **_unused):
         idx_pred, thumb_pred, middle_pred = self.forward(
-            hand_jnt_pos, hand_jnt_vel, hand_jnt_trq, hand_jnt_cmd_pos, src_key_padding_mask
+            hand_jnt_pos,
+            hand_jnt_vel,
+            hand_jnt_trq,
+            hand_jnt_cmd_pos,
+            src_key_padding_mask,
+            tactile_index_tip=tactile_index_tip,
+            tactile_thumb_tip=tactile_thumb_tip,
+            tactile_middle_tip=tactile_middle_tip,
+            tactile_ring_tip=tactile_ring_tip,
         )
 
-        loss_index = active_tactile_loss(idx_pred, tactile_index_tip[:, 1:, :], loss_coef)
-        loss_thumb = active_tactile_loss(thumb_pred, tactile_thumb_tip[:, 1:, :], loss_coef)
-        loss_middle = active_tactile_loss(middle_pred, tactile_middle_tip[:, 1:, :], loss_coef)
+        loss_index = active_tactile_loss(
+            idx_pred,
+            tactile_index_tip[:, 1:, :],
+            finger_loss_config(loss_coef, "tactile_index_tip"),
+        )
+        loss_thumb = active_tactile_loss(
+            thumb_pred,
+            tactile_thumb_tip[:, 1:, :],
+            finger_loss_config(loss_coef, "tactile_thumb_tip"),
+        )
+        loss_middle = active_tactile_loss(
+            middle_pred,
+            tactile_middle_tip[:, 1:, :],
+            finger_loss_config(loss_coef, "tactile_middle_tip"),
+        )
 
         coef = loss_coef or {}
         total_loss = (

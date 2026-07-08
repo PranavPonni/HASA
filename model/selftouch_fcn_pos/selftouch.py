@@ -1,7 +1,8 @@
 import torch
 from torch import nn
 
-from selftouch_loss_utils import active_tactile_loss
+from selftouch_feature_utils import build_tactile_history, causal_temporal_window
+from selftouch_loss_utils import active_tactile_loss, finger_loss_config
 from selftouch_offset_utils import target_window
 
 
@@ -62,12 +63,21 @@ class SelfTouch(nn.Module):
         self.combo_dim = combo_dim
         self.use_phase = use_phase
         self.phase_dim = phase_dim
+        self.temporal_window_steps = max(1, int(param.get("temporal_window_steps", 1)))
+        self.use_tactile_history = bool(param.get("use_tactile_history", False))
+        self.tactile_history_steps = max(1, int(param.get("tactile_history_steps", 1)))
+        self.tactile_history_fingers = tuple(
+            param.get("tactile_history_fingers", ("index", "thumb", "middle"))
+        )
 
         feature_dim = self.hand_dim * (3 if use_deltas else 1)
         if use_combo:
             feature_dim += combo_dim
         if use_phase:
             feature_dim += phase_dim
+        feature_dim *= self.temporal_window_steps
+        if self.use_tactile_history:
+            feature_dim += self.tactile_dim * self.tactile_history_steps * len(self.tactile_history_fingers)
         self.input_net = nn.Sequential(
             nn.Linear(feature_dim, encoder_dim),
             nn.GELU(),
@@ -123,39 +133,72 @@ class SelfTouch(nn.Module):
             )
         return start, stop
 
-    def _pos_features(self, hand_jnt_pos, selftouch_combo=None, selftouch_phase=None):
+    @staticmethod
+    def _causal_delta(x):
+        delta = torch.zeros_like(x)
+        if x.shape[1] > 1:
+            delta[:, 1:, :] = x[:, 1:, :] - x[:, :-1, :]
+        return delta
+
+    def _pos_features(
+        self,
+        hand_jnt_pos,
+        selftouch_combo=None,
+        selftouch_phase=None,
+        tactile_index_tip=None,
+        tactile_thumb_tip=None,
+        tactile_middle_tip=None,
+        tactile_ring_tip=None,
+    ):
         target_start, target_stop = self._target_window(hand_jnt_pos.shape[1])
         input_start = target_start + self.input_offset
         input_stop = target_stop + self.input_offset
-        pos = hand_jnt_pos[:, input_start:input_stop, :]
+        pos = hand_jnt_pos
         features = [pos]
 
         if self.use_deltas:
-            if input_start > 0:
-                prev = hand_jnt_pos[:, input_start - 1 : input_stop - 1, :]
-            else:
-                prev_tail = hand_jnt_pos[:, input_start : max(input_stop - 1, input_start), :]
-                prev = torch.cat([pos[:, :1, :], prev_tail], dim=1)
-            delta = pos - prev
-            delta_prev = torch.cat([delta[:, :1, :], delta[:, :-1, :]], dim=1)
-            accel = delta - delta_prev
+            delta = self._causal_delta(pos)
+            accel = self._causal_delta(delta)
             features.extend([delta, accel])
 
         if self.use_combo:
             if selftouch_combo is None:
                 combo = pos.new_zeros(pos.shape[0], pos.shape[1], self.combo_dim)
             else:
-                combo = selftouch_combo[:, target_start:target_stop, :].to(device=pos.device, dtype=pos.dtype)
+                combo = selftouch_combo.to(device=pos.device, dtype=pos.dtype)
             features.append(combo)
 
         if self.use_phase:
             if selftouch_phase is None:
                 phase = pos.new_zeros(pos.shape[0], pos.shape[1], self.phase_dim)
             else:
-                phase = selftouch_phase[:, target_start:target_stop, :].to(device=pos.device, dtype=pos.dtype)
+                phase = selftouch_phase.to(device=pos.device, dtype=pos.dtype)
             features.append(phase)
 
-        return torch.cat(features, dim=-1)
+        features = causal_temporal_window(
+            torch.cat(features, dim=-1),
+            start=input_start,
+            stop=input_stop,
+            steps=self.temporal_window_steps,
+        )
+        if self.use_tactile_history:
+            tactile_history = build_tactile_history(
+                tactile_index_tip=tactile_index_tip,
+                tactile_thumb_tip=tactile_thumb_tip,
+                tactile_middle_tip=tactile_middle_tip,
+                tactile_ring_tip=tactile_ring_tip,
+                target_start=target_start,
+                target_stop=target_stop,
+                history_steps=self.tactile_history_steps,
+                tactile_dim=self.tactile_dim,
+                fingers=self.tactile_history_fingers,
+                reference=features,
+            )
+            features = torch.cat(
+                [features, tactile_history.to(device=features.device, dtype=features.dtype)],
+                dim=-1,
+            )
+        return features
 
     def forward(
         self,
@@ -165,6 +208,10 @@ class SelfTouch(nn.Module):
         hand_jnt_cmd_pos=None,
         selftouch_combo=None,
         selftouch_phase=None,
+        tactile_index_tip=None,
+        tactile_thumb_tip=None,
+        tactile_middle_tip=None,
+        tactile_ring_tip=None,
     ):
         if hand_jnt_pos is None:
             raise KeyError("Missing required selftouch_fcn_pos input: hand_jnt_pos")
@@ -172,6 +219,10 @@ class SelfTouch(nn.Module):
             hand_jnt_pos,
             selftouch_combo=selftouch_combo,
             selftouch_phase=selftouch_phase,
+            tactile_index_tip=tactile_index_tip,
+            tactile_thumb_tip=tactile_thumb_tip,
+            tactile_middle_tip=tactile_middle_tip,
+            tactile_ring_tip=tactile_ring_tip,
         )
         hidden = self.input_net(x)
         hidden = self.temporal(hidden)
@@ -208,22 +259,26 @@ class SelfTouch(nn.Module):
             hand_jnt_pos=hand_jnt_pos,
             selftouch_combo=selftouch_combo,
             selftouch_phase=selftouch_phase,
+            tactile_index_tip=tactile_index_tip,
+            tactile_thumb_tip=tactile_thumb_tip,
+            tactile_middle_tip=tactile_middle_tip,
+            tactile_ring_tip=tactile_ring_tip,
         )
 
         loss_index = active_tactile_loss(
             idx_pred,
             tactile_index_tip[:, target_start:target_stop, :],
-            self._finger_loss_coef(loss_coef, "tactile_index_tip"),
+            finger_loss_config(loss_coef, "tactile_index_tip"),
         )
         loss_thumb = active_tactile_loss(
             thumb_pred,
             tactile_thumb_tip[:, target_start:target_stop, :],
-            self._finger_loss_coef(loss_coef, "tactile_thumb_tip"),
+            finger_loss_config(loss_coef, "tactile_thumb_tip"),
         )
         loss_middle = active_tactile_loss(
             middle_pred,
             tactile_middle_tip[:, target_start:target_stop, :],
-            self._finger_loss_coef(loss_coef, "tactile_middle_tip"),
+            finger_loss_config(loss_coef, "tactile_middle_tip"),
         )
 
         total_loss = (

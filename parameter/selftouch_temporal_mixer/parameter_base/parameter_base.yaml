@@ -1,22 +1,14 @@
 Dataset:
   data_dir: /root/motionlearning/data_server/selftouch_all
   modality:
-    tactile_index_tip: [rn, each, [0.1, 0.9], timestep dimension -> timestep 
-        dimension]
-    tactile_thumb_tip: [rn, each, [0.1, 0.9], timestep dimension -> timestep 
-        dimension]
-    tactile_middle_tip: [rn, each, [0.1, 0.9], timestep dimension -> timestep 
-        dimension]
-    tactile_ring_tip: [rn, each, [0.1, 0.9], timestep dimension -> timestep 
-        dimension]
-    hand_jnt_pos: [rn, each, [0.1, 0.9], timestep dimension -> timestep 
-        dimension]
-    hand_jnt_vel: [rn, each, [0.1, 0.9], timestep dimension -> timestep 
-        dimension]
-    hand_jnt_trq: [rn, each, [0.1, 0.9], timestep dimension -> timestep 
-        dimension]
-    hand_jnt_cmd_pos: [rn, each, [0.1, 0.9], timestep dimension -> timestep 
-        dimension]
+    tactile_index_tip: [rn, each, [0.1, 0.9], timestep dimension -> timestep dimension]
+    tactile_thumb_tip: [rn, each, [0.1, 0.9], timestep dimension -> timestep dimension]
+    tactile_middle_tip: [rn, each, [0.1, 0.9], timestep dimension -> timestep dimension]
+    tactile_ring_tip: [rn, each, [0.1, 0.9], timestep dimension -> timestep dimension]
+    hand_jnt_pos: [rn, each, [0.1, 0.9], timestep dimension -> timestep dimension]
+    hand_jnt_vel: [rn, each, [0.1, 0.9], timestep dimension -> timestep dimension]
+    hand_jnt_trq: [rn, each, [0.1, 0.9], timestep dimension -> timestep dimension]
+    hand_jnt_cmd_pos: [rn, each, [0.1, 0.9], timestep dimension -> timestep dimension]
   sequence_length: 400
   shift_data: 1
   test_split_policy: blocked_tail
@@ -61,8 +53,8 @@ Dataset:
 Model:
   hand_dim: 16
   input_dim: 16
-  use_derived_features: false
-  use_joint_pos_only: true
+  use_derived_features: true
+  use_joint_pos_only: false
   tactile_dim: 90
   d_model: 384
   nhead: 8
@@ -73,6 +65,13 @@ Model:
   model: selftouch_temporal_mixer
 
   tactile_persistence_blend: 0.0
+  use_tactile_history: true
+  tactile_history_steps: 5
+  tactile_history_fingers:
+  - index
+  - thumb
+  - middle
+  temporal_window_steps: 1
 Motion:
 
 Required:
@@ -81,16 +80,16 @@ Required:
 
 Test:
   loss_coef: &transformer_loss
-    tactile_index_tip: 1.5
-    tactile_thumb_tip: 1.0
-    tactile_middle_tip: 2.5
-    tactile_loss: mae
+    tactile_index_tip: 3.0
+    tactile_thumb_tip: 0.8
+    tactile_middle_tip: 3.5
+    tactile_loss: huber
     tactile_spread_mae_weight: 0.75
     tactile_active_weight: 0.35
     tactile_active_threshold_ratio: 0.08
-    tactile_intensity_weight: 0.20
+    tactile_intensity_weight: 0.2
     tactile_intensity_gamma: 2.0
-    tactile_contact_weight: 0.0
+    tactile_contact_weight: 0.15
     tactile_contact_temperature: 0.08
     tactile_peak_weight: 0.35
     tactile_profile_weight: 0.15
@@ -104,7 +103,7 @@ Test:
     tactile_highpass_kernel: 9
     tactile_temporal_std_weight: 0.35
     tactile_delta_std_weight: 0.35
-    tactile_topk_weight: 0.30
+    tactile_topk_weight: 0.3
     tactile_topk_count: 12
     tactile_taxel_profile_weight: 0.35
     tactile_temporal_profile_weight: 0.25
@@ -116,8 +115,27 @@ Test:
     tactile_initial_weight: 1.0
     contrastive: 0.0
     classification: 0.0
-  model_load_path: 
-    /root/motionlearning/model_weight/selftouch_temporal_mixer/parameter_base/epoch0.pth
+    tactile_huber_beta: 0.04
+    tactile_mae_weight: 2.0
+    tactile_contact_mae_weight: 0.75
+    tactile_no_contact_mae_weight: 0.1
+    tactile_contact_ratio: 0.12
+    tactile_pinball_weight: 0.05
+    tactile_pinball_quantile: 0.9
+    tactile_finger_loss:
+      index:
+        tactile_contact_mae_weight: 1.0
+        tactile_topk_weight: 0.45
+        tactile_peak_weight: 0.5
+      thumb:
+        tactile_contact_mae_weight: 0.55
+        tactile_topk_weight: 0.25
+        tactile_peak_weight: 0.25
+      middle:
+        tactile_contact_mae_weight: 1.0
+        tactile_topk_weight: 0.45
+        tactile_peak_weight: 0.5
+  model_load_path: /root/motionlearning/model_weight/selftouch_temporal_mixer/parameter_base/epoch0.pth
 
 Train:
   batch_size: 8
@@ -164,6 +182,25 @@ Sweep:
         values: [7, 9]
       dropout:
         values: [0.0, 0.02, 0.05]
+      use_tactile_history:
+        values:
+        - true
+      tactile_history_steps:
+        values:
+        - 3
+        - 5
+        - 8
+      temporal_window_steps:
+        values:
+        - 1
+        - 4
+        - 8
+      use_derived_features:
+        values:
+        - true
+      use_joint_pos_only:
+        values:
+        - false
     Train:
       batch_size:
         values: [4, 8, 16]

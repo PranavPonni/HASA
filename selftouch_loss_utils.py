@@ -39,7 +39,39 @@ def reconstruction_loss(pred, target, loss_cfg=None):
         return F.mse_loss(pred, target)
     if name in {"mae", "l1", "mean_absolute_error"}:
         return F.l1_loss(pred, target)
-    return F.smooth_l1_loss(pred, target)
+    beta = _cfg_float(loss_cfg, "tactile_huber_beta", _cfg_float(loss_cfg, "huber_beta", 1.0))
+    if name in {"huber", "smooth_l1", "smoothl1"}:
+        return F.smooth_l1_loss(pred, target, beta=max(beta, 1e-6))
+    return F.smooth_l1_loss(pred, target, beta=max(beta, 1e-6))
+
+
+def finger_loss_config(loss_coef, tactile_key):
+    """Merge per-finger tactile overrides into a loss config copy."""
+    cfg = dict(loss_coef or {})
+    aliases = {
+        "tactile_index_tip": "index",
+        "tactile_thumb_tip": "thumb",
+        "tactile_middle_tip": "middle",
+        "tactile_ring_tip": "ring",
+    }
+    per_finger = (
+        cfg.get("tactile_finger_loss")
+        or cfg.get("per_finger_loss_coef")
+        or cfg.get("finger_loss_coef")
+    )
+    if isinstance(per_finger, dict):
+        key = aliases.get(tactile_key, tactile_key)
+        overrides = per_finger.get(tactile_key, per_finger.get(key))
+        if isinstance(overrides, dict):
+            cfg.update(overrides)
+
+    scales = cfg.get("tactile_raw_scale_by_key")
+    if isinstance(scales, dict) and tactile_key in scales:
+        cfg["tactile_raw_scale"] = scales[tactile_key]
+    slopes = cfg.get("tactile_raw_slope_by_key")
+    if isinstance(slopes, dict) and tactile_key in slopes:
+        cfg["tactile_raw_slope"] = slopes[tactile_key]
+    return cfg
 
 
 def _diff_time(x):
@@ -238,6 +270,29 @@ def _activity_mask(target, ratio):
     return (activity >= threshold).reshape_as(target)
 
 
+def _contact_mask(target, cfg):
+    threshold = _cfg_float(cfg, "tactile_contact_threshold", 0.0)
+    centered = bool(cfg.get("tactile_contact_centered", True))
+    if threshold > 0.0:
+        score = target.detach()
+        if centered:
+            score = score - score.mean(dim=(1, 2), keepdim=True)
+        return score.abs() >= threshold
+    return _activity_mask(
+        target,
+        _cfg_float(cfg, "tactile_contact_ratio", _cfg_float(cfg, "tactile_active_threshold_ratio", 0.08)),
+    )
+
+
+def _contact_region_l1(pred, target, cfg, contact=True):
+    mask = _contact_mask(target, cfg)
+    if not contact:
+        mask = ~mask
+    if not bool(mask.any()):
+        return pred.sum() * 0.0
+    return F.l1_loss(pred[mask], target[mask])
+
+
 def _active_region_loss(pred, target, ratio):
     mask = _activity_mask(target, ratio)
     if not bool(mask.any()):
@@ -265,6 +320,12 @@ def _contact_logit_loss(pred, target, ratio, temperature):
         / (spread.reshape(target.shape[0], 1, 1) * max(float(temperature), 1e-4))
     )
     return F.binary_cross_entropy_with_logits(logits, mask)
+
+
+def _pinball_loss(pred, target, quantile):
+    q = min(max(float(quantile), 1e-4), 1.0 - 1e-4)
+    delta = target - pred
+    return torch.maximum(q * delta, (q - 1.0) * delta).mean()
 
 
 def _spread_normalized_mae(pred, target):
@@ -479,6 +540,14 @@ def active_tactile_loss(pred, target, loss_cfg=None):
             _cfg_float(cfg, "tactile_active_threshold_ratio", 0.08),
         )
 
+    contact_mae_weight = _cfg_float(cfg, "tactile_contact_mae_weight")
+    if contact_mae_weight and pred.ndim >= 3 and target.ndim >= 3:
+        loss = loss + contact_mae_weight * _contact_region_l1(pred, target, cfg, contact=True)
+
+    no_contact_mae_weight = _cfg_float(cfg, "tactile_no_contact_mae_weight")
+    if no_contact_mae_weight and pred.ndim >= 3 and target.ndim >= 3:
+        loss = loss + no_contact_mae_weight * _contact_region_l1(pred, target, cfg, contact=False)
+
     intensity_weight = _cfg_float(cfg, "tactile_intensity_weight")
     if intensity_weight and pred.ndim >= 3 and target.ndim >= 3:
         loss = loss + intensity_weight * _intensity_weighted_loss(
@@ -494,6 +563,14 @@ def active_tactile_loss(pred, target, loss_cfg=None):
             target,
             _cfg_float(cfg, "tactile_active_threshold_ratio", 0.08),
             _cfg_float(cfg, "tactile_contact_temperature", 0.08),
+        )
+
+    pinball_weight = _cfg_float(cfg, "tactile_pinball_weight")
+    if pinball_weight:
+        loss = loss + pinball_weight * _pinball_loss(
+            pred,
+            target,
+            _cfg_float(cfg, "tactile_pinball_quantile", 0.9),
         )
 
     peak_weight = _cfg_float(cfg, "tactile_peak_weight")

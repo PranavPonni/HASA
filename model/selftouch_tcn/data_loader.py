@@ -15,6 +15,12 @@ TACTILE_KEYS = [
     "tactile_middle_tip",
     "tactile_ring_tip",
 ]
+JOINT_KEYS = [
+    "hand_jnt_pos",
+    "hand_jnt_vel",
+    "hand_jnt_trq",
+    "hand_jnt_cmd_pos",
+]
 
 
 def _flatten_tactile(value):
@@ -79,8 +85,9 @@ class CustomDataLoader(BaseDataLoader):
             for key in TACTILE_KEYS:
                 if key in val:
                     data[ep][key] = _flatten_tactile(val[key])
-            data[ep]["hand_jnt_pos"]=val["hand_jnt_pos"][:, JOINT_IDX]
-            data[ep]["hand_jnt_cmd_pos"]=val["hand_jnt_cmd_pos"][:, JOINT_IDX]
+            for key in JOINT_KEYS:
+                if key in val:
+                    data[ep][key] = np.asarray(val[key], dtype=np.float32)[:, JOINT_IDX]
 
         return data
 

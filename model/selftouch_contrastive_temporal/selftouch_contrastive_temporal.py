@@ -12,7 +12,7 @@ Decoder: Causal temporal mixer (causal depthwise conv) → per-timestep tactile 
 import torch
 from torch import nn
 import torch.nn.functional as F
-from selftouch_loss_utils import active_tactile_loss, supervised_contrastive_loss
+from selftouch_loss_utils import active_tactile_loss, finger_loss_config, supervised_contrastive_loss
 from selftouch_feature_utils import TactileHead, build_joint_features, joint_feature_dim
 
 
@@ -74,9 +74,27 @@ class SelfTouchContrastiveTemporal(nn.Module):
         hand_dim    = param.get("hand_dim",       16)
         use_joint_pos_only = bool(param.get("use_joint_pos_only", True))
         use_derived = bool(param.get("use_derived_features", False))
+        temporal_window_steps = max(1, int(param.get("temporal_window_steps", 1)))
+        use_tactile_history = bool(param.get("use_tactile_history", False))
+        tactile_history_steps = max(1, int(param.get("tactile_history_steps", 1)))
+        tactile_history_fingers = tuple(
+            param.get("tactile_history_fingers", ("index", "thumb", "middle"))
+        )
         input_dim = (
-            joint_feature_dim(hand_dim, use_derived, use_joint_pos_only)
-            if use_joint_pos_only or use_derived
+            joint_feature_dim(
+                hand_dim,
+                use_derived,
+                use_joint_pos_only,
+                temporal_window_steps=temporal_window_steps,
+                tactile_dim=param.get("tactile_dim", 90),
+                use_tactile_history=use_tactile_history,
+                tactile_history_steps=tactile_history_steps,
+                tactile_history_fingers=tactile_history_fingers,
+            )
+            if use_joint_pos_only
+            or use_derived
+            or use_tactile_history
+            or temporal_window_steps > 1
             else param.get("input_dim", hand_dim * 4)
         )
         num_classes = param.get("num_classes",    3)
@@ -93,6 +111,10 @@ class SelfTouchContrastiveTemporal(nn.Module):
         self.input_dim = int(input_dim)
         self.use_joint_pos_only = use_joint_pos_only
         self.use_derived_features = use_derived
+        self.temporal_window_steps = temporal_window_steps
+        self.use_tactile_history = use_tactile_history
+        self.tactile_history_steps = tactile_history_steps
+        self.tactile_history_fingers = tactile_history_fingers
 
         # ── Input projection ─────────────────────────────────────────────────
         self.input_proj = nn.Sequential(
@@ -136,6 +158,10 @@ class SelfTouchContrastiveTemporal(nn.Module):
         hand_jnt_vel: torch.Tensor = None,
         hand_jnt_trq: torch.Tensor = None,
         hand_jnt_cmd_pos: torch.Tensor = None,
+        tactile_index_tip: torch.Tensor = None,
+        tactile_thumb_tip: torch.Tensor = None,
+        tactile_middle_tip: torch.Tensor = None,
+        tactile_ring_tip: torch.Tensor = None,
     ) -> torch.Tensor:
         """Build joint state at t for predicting tactile at t+1."""
         return build_joint_features(
@@ -146,6 +172,15 @@ class SelfTouchContrastiveTemporal(nn.Module):
             next_step=True,
             use_derived_features=self.use_derived_features,
             use_joint_pos_only=self.use_joint_pos_only,
+            temporal_window_steps=self.temporal_window_steps,
+            use_tactile_history=self.use_tactile_history,
+            tactile_history_steps=self.tactile_history_steps,
+            tactile_history_fingers=self.tactile_history_fingers,
+            tactile_dim=self.tactile_dim,
+            tactile_index_tip=tactile_index_tip,
+            tactile_thumb_tip=tactile_thumb_tip,
+            tactile_middle_tip=tactile_middle_tip,
+            tactile_ring_tip=tactile_ring_tip,
         )
 
     def _activate_tactile(self, x: torch.Tensor) -> torch.Tensor:
@@ -173,8 +208,21 @@ class SelfTouchContrastiveTemporal(nn.Module):
         hand_jnt_vel: torch.Tensor = None,
         hand_jnt_trq: torch.Tensor = None,
         hand_jnt_cmd_pos: torch.Tensor = None,
+        tactile_index_tip: torch.Tensor = None,
+        tactile_thumb_tip: torch.Tensor = None,
+        tactile_middle_tip: torch.Tensor = None,
+        tactile_ring_tip: torch.Tensor = None,
     ):
-        x = self._build_input(hand_jnt_pos, hand_jnt_vel, hand_jnt_trq, hand_jnt_cmd_pos)   # (B, T-1, input_dim)
+        x = self._build_input(
+            hand_jnt_pos,
+            hand_jnt_vel,
+            hand_jnt_trq,
+            hand_jnt_cmd_pos,
+            tactile_index_tip=tactile_index_tip,
+            tactile_thumb_tip=tactile_thumb_tip,
+            tactile_middle_tip=tactile_middle_tip,
+            tactile_ring_tip=tactile_ring_tip,
+        )   # (B, T-1, input_dim)
         h = self.input_proj(x)                                   # (B, T-1, d_model)
 
         # Causal encoder for sequence-level embedding
@@ -212,16 +260,37 @@ class SelfTouchContrastiveTemporal(nn.Module):
         data_found=None,
         loss_coef: dict = None,
     ):
-        out = self.forward(hand_jnt_pos, hand_jnt_vel, hand_jnt_trq, hand_jnt_cmd_pos)
+        out = self.forward(
+            hand_jnt_pos,
+            hand_jnt_vel,
+            hand_jnt_trq,
+            hand_jnt_cmd_pos,
+            tactile_index_tip=tactile_index_tip,
+            tactile_thumb_tip=tactile_thumb_tip,
+            tactile_middle_tip=tactile_middle_tip,
+            tactile_ring_tip=tactile_ring_tip,
+        )
 
         contrastive_loss = supervised_contrastive_loss(out["projection"], labels, (loss_coef or {}).get("contrastive_temperature", 0.1))
         cls_loss = F.cross_entropy(out["logits"], labels)
 
         coef = loss_coef or {}
         cfg = {**coef, "tactile_loss": coef.get("tactile_loss", self.tactile_loss_name)}
-        loss_idx = active_tactile_loss(out["idx_pred"], tactile_index_tip[:, 1:], cfg)
-        loss_thb = active_tactile_loss(out["thumb_pred"], tactile_thumb_tip[:, 1:], cfg)
-        loss_mid = active_tactile_loss(out["middle_pred"], tactile_middle_tip[:, 1:], cfg)
+        loss_idx = active_tactile_loss(
+            out["idx_pred"],
+            tactile_index_tip[:, 1:],
+            finger_loss_config(cfg, "tactile_index_tip"),
+        )
+        loss_thb = active_tactile_loss(
+            out["thumb_pred"],
+            tactile_thumb_tip[:, 1:],
+            finger_loss_config(cfg, "tactile_thumb_tip"),
+        )
+        loss_mid = active_tactile_loss(
+            out["middle_pred"],
+            tactile_middle_tip[:, 1:],
+            finger_loss_config(cfg, "tactile_middle_tip"),
+        )
 
         total = (
             coef.get("contrastive", 1.0) * contrastive_loss
