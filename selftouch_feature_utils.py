@@ -2,7 +2,7 @@ import torch
 from torch import nn
 
 
-DEFAULT_TACTILE_HISTORY_FINGERS = ("index", "thumb", "middle")
+DEFAULT_TACTILE_HISTORY_FINGERS = ("index", "thumb", "middle", "ring")
 
 
 def _positive_int(value, default=1):

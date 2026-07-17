@@ -22,7 +22,19 @@ VARIANTS = [
     "selftouch_fcn_posveltrq",
     "selftouch_fcn_postrqcmd",
     "selftouch_fcn_poscmdvel",
-    "selftouch_fcn_posveltrqcmd",
+    "selftouch_fcn_posveltrqcmd"
+    "selftouch_fcn_postrqcmd_tplus10",
+    "selftouch_fcn_postrqcmd_tplus5",
+    "selftouch_fcn_postrqcmd_tplus2",
+    "selftouch_fcn_postrqcmd_tminus2",
+    "selftouch_fcn_postrqcmd_tminus5",
+    "selftouch_fcn_postrqcmd_tminus10",
+    "selftouch_fcn_pos_tminus10",
+    "selftouch_fcn_pos_tminus5",
+    "selftouch_fcn_pos_tminus2",
+    "selftouch_fcn_pos_tplus2",
+    "selftouch_fcn_pos_tplus5",
+    "selftouch_fcn_pos_tplus10",
 ]
 
 

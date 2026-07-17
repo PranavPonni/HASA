@@ -366,6 +366,40 @@ def _array_from_mapping(mapping: Mapping, key: str) -> Optional[np.ndarray]:
     return np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
 
 
+def _finger_valid_rows(
+    data: Mapping,
+    finger_name: str,
+    pred_steps: int,
+    *,
+    next_step: bool,
+    input_offset: int,
+) -> Optional[np.ndarray]:
+    mask = _array_from_mapping(data, "selftouch_finger_mask")
+    if mask is None or mask.ndim < 2:
+        return None
+    try:
+        finger_idx = FINGER_ORDER.index(str(finger_name).lower())
+    except ValueError:
+        return None
+    if mask.ndim >= 3:
+        if finger_idx >= mask.shape[-1]:
+            return None
+        mask = mask[..., finger_idx:finger_idx + 1]
+    else:
+        mask = mask[..., None]
+    pred_steps = max(int(pred_steps or 0), 1)
+    dummy_pred = np.zeros((mask.shape[0], pred_steps, 1), dtype=np.float32)
+    mask_cmp, _, _ = align_next_step_prediction(
+        mask,
+        dummy_pred,
+        next_step=next_step,
+        input_offset=input_offset,
+    )
+    if mask_cmp.ndim < 2:
+        return None
+    return np.asarray(mask_cmp).reshape(mask_cmp.shape[0], -1).mean(axis=1) > 0.5
+
+
 def _fallback_raw_shape(
     data: Mapping,
     preds: Mapping[str, object],
@@ -756,9 +790,7 @@ def _save_prediction_accuracy_plot(plot_dir: str, finger_names: Sequence[str], h
         plt.xlim(0, epochs[-1] + max(x_pad, 5))
     elif len(epochs) == 1:
         plt.xlim(0, max(int(epochs[0]), 1))
-    finite_values = np.concatenate([vals[np.isfinite(vals)] for vals in y_series if np.isfinite(vals).any()])
-    y_min = max(0.0, float(np.min(finite_values)) - 5.0)
-    plt.ylim(y_min, 100.0)
+    plt.ylim(0.0, 100.0)
     plt.grid(True, alpha=0.3)
     plt.legend(fontsize=8)
     plt.tight_layout()
@@ -835,6 +867,13 @@ def plot_tactile_temporal_profiles(
             next_step=next_step,
             input_offset=int(dataset_param.get("input_offset", 0) or 0),
         )
+        valid_rows = _finger_valid_rows(
+            data,
+            name,
+            int(pred_arr.shape[1]) if pred_arr is not None and pred_arr.ndim >= 3 else int(pred_scaled.shape[1]),
+            next_step=next_step,
+            input_offset=int(dataset_param.get("input_offset", 0) or 0),
+        )
         is_active = name in active
 
         if is_active:
@@ -862,6 +901,18 @@ def plot_tactile_temporal_profiles(
             steps = len(timesteps)
             raw_cmp = np.zeros((raw_scaled.shape[0], steps, raw_scaled.shape[-1]), dtype=np.float32)
             pred_cmp = np.zeros_like(raw_cmp)
+
+        valid_labels = True
+        if valid_rows is not None:
+            valid_labels = bool(np.any(valid_rows))
+            if valid_labels:
+                raw_cmp = raw_cmp[valid_rows]
+                pred_cmp = pred_cmp[valid_rows]
+            else:
+                steps = len(timesteps)
+                dim = int(raw_scaled.shape[-1]) if raw_scaled.ndim >= 3 else TAXELS_PER_FINGER
+                raw_cmp = np.zeros((1, steps, dim), dtype=np.float32)
+                pred_cmp = np.zeros_like(raw_cmp)
 
         pred_uncalibrated_cmp = np.asarray(pred_cmp, dtype=np.float32).copy()
         uncalibrated_abs_error = np.abs(raw_cmp - pred_uncalibrated_cmp)
@@ -923,6 +974,9 @@ def plot_tactile_temporal_profiles(
                 "timesteps": timesteps,
                 "raw": raw_profile,
                 "pred": pred_profile,
+                "raw_cmp": raw_cmp,
+                "pred_cmp": pred_cmp,
+                "pred_uncalibrated_cmp": pred_uncalibrated_cmp,
                 "pred_raw": pred_profile_raw,
                 "pred_uncalibrated": pred_uncalibrated_profile,
                 "pred_start_aligned": pred_profile_start_aligned,
@@ -951,6 +1005,7 @@ def plot_tactile_temporal_profiles(
                 "display_start_shift": display_start_shift,
                 "has_raw": has_raw,
                 "has_pred": has_pred,
+                "valid_labels": valid_labels,
             }
         )
 
@@ -959,6 +1014,39 @@ def plot_tactile_temporal_profiles(
     metrics: Dict[str, float] = {}
     if not profiles:
         return {"images": images, "metrics": metrics, "files": files}
+
+    scale_values = [
+        np.asarray(profile["raw_cmp"], dtype=np.float32).reshape(-1)
+        for profile in profiles
+        if profile["active"] and profile["has_raw"] and profile["valid_labels"] and np.asarray(profile["raw_cmp"]).size
+    ]
+    if not scale_values:
+        scale_values = [
+            np.asarray(profile["raw_cmp"], dtype=np.float32).reshape(-1)
+            for profile in profiles
+            if profile["has_raw"] and profile["valid_labels"] and np.asarray(profile["raw_cmp"]).size
+        ]
+    shared_raw_accuracy_scale = _robust_signal_spread(np.concatenate(scale_values)) if scale_values else None
+    for profile in profiles:
+        profile["accuracy"] = prediction_accuracy(
+            profile["raw_cmp"],
+            profile["pred_cmp"],
+            scale=shared_raw_accuracy_scale,
+        )
+        profile["uncalibrated_raw_accuracy"] = prediction_accuracy(
+            profile["raw_cmp"],
+            profile["pred_uncalibrated_cmp"],
+            scale=shared_raw_accuracy_scale,
+        )
+
+    tactile_ylim = _tactile_ylim(
+        arr
+        for profile in profiles
+        for arr in (profile["raw"], profile["pred"])
+    )
+    residual_ylim = _shared_ylim(profile["residual"] for profile in profiles)
+    residual_bound = max(abs(residual_ylim[0]), abs(residual_ylim[1]), 1.0)
+    residual_ylim = (-residual_bound, residual_bound)
 
     fig, axes = plt.subplots(
         len(profiles),
@@ -1002,9 +1090,8 @@ def plot_tactile_temporal_profiles(
                 fontsize=9,
             )
             ax.set_ylabel("tactile value")
-            ylim = _tactile_ylim([raw, pred])
-            ax.set_ylim(*ylim)
-            if ylim == (TACTILE_YMIN, TACTILE_YMAX):
+            ax.set_ylim(*tactile_ylim)
+            if tactile_ylim == (TACTILE_YMIN, TACTILE_YMAX):
                 ax.set_yticks(TACTILE_YTICKS)
             ax.set_xlabel("Timestep")
             ax.tick_params(axis="x", which="both", labelbottom=True)
@@ -1088,6 +1175,7 @@ def plot_tactile_temporal_profiles(
             label=f"{name} raw-pred",
         )
         ax.set_ylabel("residual")
+        ax.set_ylim(*residual_ylim)
         ax.set_title(
             f"{name.capitalize()} residual | mean={profile['profile_bias']:.2f}",
             fontsize=9,
@@ -1149,9 +1237,9 @@ def plot_tactile_temporal_profiles(
     plt.close(taxel_fig)
     images["tactile_taxel_error"] = taxel_error_path
 
-    metric_profiles = [p for p in profiles if p["active"] and p["has_raw"] and p["has_pred"]]
+    metric_profiles = [p for p in profiles if p["active"] and p["has_raw"] and p["has_pred"] and p["valid_labels"]]
     if not metric_profiles:
-        metric_profiles = [p for p in profiles if p["has_raw"] and p["has_pred"]]
+        metric_profiles = [p for p in profiles if p["has_raw"] and p["has_pred"] and p["valid_labels"]]
     if not metric_profiles:
         metric_profiles = [p for p in profiles if p["active"]] or profiles
     metrics["tactile_line_mae"] = float(np.mean([p["mae"] for p in metric_profiles]))

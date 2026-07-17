@@ -298,8 +298,9 @@ def selftouch_loss_step(
         )
         setattr(model, notice_name, True)
 
-    weighted_losses = [0.0, 0.0, 0.0, 0.0]
-    pred_chunks = [[], [], []]
+    weighted_losses = None
+    pred_chunks = None
+    pred_count = 0
     total_count = 0
     context = torch.enable_grad() if is_train else torch.no_grad()
     with context:
@@ -309,8 +310,14 @@ def selftouch_loss_step(
             weight = float(chunk_count) / float(max(batch_count, 1))
             chunk = move_batch_to_device(slice_data_batch(data, start, end), device)
             losses, preds = _forward_loss(model, chunk, loss_coef, enabled_amp)
-            total_loss, loss_index, loss_thumb, loss_middle = losses
-            for idx, loss_value in enumerate((total_loss, loss_index, loss_thumb, loss_middle)):
+            losses = tuple(losses)
+            preds = tuple(preds)
+            total_loss = losses[0]
+            if weighted_losses is None:
+                weighted_losses = [0.0 for _ in losses]
+                pred_chunks = [[] for _ in preds]
+            pred_count = len(preds)
+            for idx, loss_value in enumerate(losses):
                 weighted_losses[idx] += float(loss_value.detach()) * weight
             if is_train:
                 scaled_loss = total_loss * weight
@@ -322,14 +329,14 @@ def selftouch_loss_step(
                 for idx, pred in enumerate(preds):
                     pred_chunks[idx].append(pred.detach().cpu())
             total_count += chunk_count
-            del chunk, losses, preds, total_loss, loss_index, loss_thumb, loss_middle
+            del chunk, losses, preds, total_loss
 
     if is_train:
         _optimizer_step(model, optimizer, scaler, enabled_amp, mode_param)
-        empty = tuple(torch.empty(0) for _ in range(3))
-        return tuple(weighted_losses), empty
+        empty = tuple(torch.empty(0) for _ in range(pred_count))
+        return tuple(weighted_losses or []), empty
 
-    averaged = tuple(float(value) for value in weighted_losses)
+    averaged = tuple(float(value) for value in (weighted_losses or []))
     preds = tuple(torch.cat(chunks, dim=0) for chunks in pred_chunks)
     return averaged, preds
 

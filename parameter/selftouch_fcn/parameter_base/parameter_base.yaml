@@ -3,7 +3,8 @@ Dataset:
   modality:
     tactile_index_tip: ["n", "each", [0.1, 0.9], "timestep dimension -> timestep dimension"]
     tactile_thumb_tip: ["n", "each", [0.1, 0.9], "timestep dimension -> timestep dimension"]
-    tactile_middle_tip: ["n", "each", [0.1, 0.9], "timestep dimension -> timestep dimension"]
+    tactile_middle_tip: ["n", "each", [0.1, 0.9], "timestep dimension -> timestep
+        dimension"]
     tactile_ring_tip: ["n", "each", [0.1, 0.9], "timestep dimension -> timestep dimension"]
     hand_jnt_pos: ["n", "each", [0.1, 0.9], "timestep dimension -> timestep dimension"]
     hand_jnt_vel: ["n", "each", [0.1, 0.9], "timestep dimension -> timestep dimension"]
@@ -18,17 +19,29 @@ Dataset:
   - thumb-index
   - thumb-middle
   - index-middle
+  - middle-ring
+  - thumb-index-middle
+  - index-middle-ring
   test_data:
   - thumb_index_episode0
   - thumb_middle_episode0
   - index_middle_episode0
+  - middle_ring_episode0
+  - thumb_index_middle_episode0
+  - index_middle_ring_episode0
   - thumb_index_episode20
   - thumb_middle_episode20
   - index_middle_episode20
+  - middle_ring_episode20
+  - thumb_index_middle_episode20
+  - index_middle_ring_episode20
   - thumb_index_episode40
   - thumb_middle_episode40
   - index_middle_episode40
-
+  - middle_ring_episode40
+  - thumb_index_middle_episode40
+  - index_middle_ring_episode40
+  require_all_selftouch_combinations: true
 Model:
   hand_dim: 16
   use_joint_pos_only: false
@@ -44,6 +57,7 @@ Model:
   - index
   - thumb
   - middle
+  - ring
   temporal_window_steps: 20
 Motion:
 
@@ -56,6 +70,7 @@ Test:
     tactile_index_tip: 3.0
     tactile_thumb_tip: 0.8
     tactile_middle_tip: 3.5
+    tactile_ring_tip: 3.5
     tactile_loss: huber
     tactile_spread_mae_weight: 0.75
     tactile_active_weight: 0.35
@@ -106,7 +121,12 @@ Test:
         tactile_contact_mae_weight: 1.0
         tactile_topk_weight: 0.45
         tactile_peak_weight: 0.5
-  model_load_path: /root/motionlearning/model_weight/selftouch_fcn/parameter_base/epoch0.pth
+      ring:
+        tactile_contact_mae_weight: 1.0
+        tactile_topk_weight: 0.45
+        tactile_peak_weight: 0.5
+  model_load_path:
+    /root/motionlearning/model_weight/selftouch_fcn/parameter_base/epoch0.pth
 
 Train:
   batch_size: 8

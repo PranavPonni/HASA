@@ -37,7 +37,7 @@ def raw_acc(row, finger):
 
 
 def aggregate_raw_acc(row):
-    vals = [raw_acc(row, finger) for finger in ("index", "thumb", "middle")]
+    vals = [raw_acc(row, finger) for finger in ("index", "thumb", "middle", "ring")]
     vals = [value for value in vals if math.isfinite(value)]
     if vals:
         return sum(vals) / len(vals)

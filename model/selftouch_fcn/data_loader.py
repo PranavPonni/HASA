@@ -10,6 +10,14 @@ import einops
 import gc
 import pdb
 
+from selftouch_combo_utils import (
+    COMBO_KEYS,
+    combo_vector_for_episode,
+    tactile_keys_for_episode,
+    validate_selftouch_combinations,
+    validate_selftouch_data_dir,
+)
+
 TACTILE_KEYS = [
     "tactile_index_tip",
     "tactile_thumb_tip",
@@ -24,14 +32,44 @@ JOINT_KEYS = [
 ]
 
 
-def _flatten_tactile(value):
+def _episode_timesteps_from_modalities(value_map):
+    for key in (*JOINT_KEYS, *TACTILE_KEYS):
+        value = value_map.get(key)
+        if value is None:
+            continue
+        arr = np.asarray(value)
+        if arr.ndim > 0:
+            return max(int(arr.shape[0]), 1)
+    return 1
+
+
+def _missing_tactile(value):
+    if value is None:
+        return True
+    arr = np.asarray(value)
+    if arr.dtype == object:
+        flat = arr.reshape(-1)
+        return flat.size == 0 or all(item is None for item in flat)
+    return False
+
+
+def _flatten_tactile(value, timesteps=1):
+    timesteps = max(int(timesteps or 1), 1)
+    if _missing_tactile(value):
+        return np.zeros((timesteps, 90), dtype=np.float32)
     arr = np.asarray(value)
     if arr.ndim == 3:
-        return einops.rearrange(arr, "t a d -> t (a d)")
+        return einops.rearrange(arr, "t a d -> t (a d)").astype(np.float32, copy=False)
     if arr.ndim == 2:
         return arr.astype(np.float32, copy=False)
-    t = arr.shape[0] if arr.ndim > 0 else 1
-    return np.zeros((t, 90), dtype=np.float32)
+    t = int(arr.shape[0]) if arr.ndim > 0 else timesteps
+    return np.zeros((max(t, timesteps, 1), 90), dtype=np.float32)
+
+
+def _finger_valid_mask(value_map, timesteps):
+    valid = [0.0 if _missing_tactile(value_map.get(key)) else 1.0 for key in TACTILE_KEYS]
+    valid = np.asarray(valid, dtype=np.float32)
+    return np.repeat(valid[None, :], max(int(timesteps or 1), 1), axis=0)
 
 
 class CustomDataLoader(BaseDataLoader):
@@ -39,7 +77,9 @@ class CustomDataLoader(BaseDataLoader):
         super().__init__()
         self.dataset_param = dataset_param
         self.mem="ram"
+        validate_selftouch_data_dir(self.dataset_param)
         dir_data, data_found = data_preproc.get_sequence_dict(self.dataset_param, mem=self.mem)
+        validate_selftouch_combinations(dir_data, self.dataset_param)
         # Change tactile shape
         dir_data=self.change_shape(dir_data)
         train_dir_data, test_dir_data = data_preproc.split_train_test(dir_data, self.dataset_param,"test_data")
@@ -59,7 +99,15 @@ class CustomDataLoader(BaseDataLoader):
             data_preproc.save_pkl_file(scaling_param, scaling_path)
         print("scaling param ready")
 
-        train_dir_data = data_preproc.scale_dir_data(train_dir_data, scaling_param, self.dataset_param, mem=self.mem)
+        try:
+            train_dir_data = data_preproc.scale_dir_data(train_dir_data, scaling_param, self.dataset_param, mem=self.mem)
+        except (KeyError, ValueError) as exc:
+            if not scaling_param_exists:
+                raise
+            print(f"[warn] stale scaling_param.pkl detected; recomputing scaler: {exc}")
+            scaling_param = data_preproc.get_scaling_param(train_dir_data, self.dataset_param, mem=self.mem)
+            data_preproc.save_pkl_file(scaling_param, scaling_path)
+            train_dir_data = data_preproc.scale_dir_data(train_dir_data, scaling_param, self.dataset_param, mem=self.mem)
         print("scaled train data")
 
         test_dir_data = data_preproc.scale_dir_data(test_dir_data, scaling_param, self.dataset_param, mem=self.mem)
@@ -82,9 +130,11 @@ class CustomDataLoader(BaseDataLoader):
     
     def change_shape(self,data):
         for ep, val in data.items():
+            timesteps = _episode_timesteps_from_modalities(val)
+            data[ep]["selftouch_finger_mask"] = _finger_valid_mask(val, timesteps)
             for key in TACTILE_KEYS:
                 if key in val:
-                    data[ep][key] = _flatten_tactile(val[key])
+                    data[ep][key] = _flatten_tactile(val[key], timesteps)
             for key in JOINT_KEYS:
                 if key in val:
                     data[ep][key] = np.asarray(val[key], dtype=np.float32)

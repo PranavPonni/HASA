@@ -32,6 +32,12 @@ Dataset:
     - - 0.1
       - 0.9
     - timestep dimension -> timestep dimension
+    tactile_ring_tip:
+    - n
+    - each
+    - - 0.1
+      - 0.9
+    - timestep dimension -> timestep dimension
     hand_jnt_pos:
     - n
     - each
@@ -54,19 +60,31 @@ Dataset:
   - thumb-index
   - thumb-middle
   - index-middle
+  - middle-ring
+  - thumb-index-middle
+  - index-middle-ring
   test_data:
   - thumb_index_episode0
   - thumb_middle_episode0
   - index_middle_episode0
+  - middle_ring_episode0
+  - thumb_index_middle_episode0
+  - index_middle_ring_episode0
   - thumb_index_episode20
   - thumb_middle_episode20
   - index_middle_episode20
+  - middle_ring_episode20
+  - thumb_index_middle_episode20
+  - index_middle_ring_episode20
   - thumb_index_episode40
   - thumb_middle_episode40
   - index_middle_episode40
-
+  - middle_ring_episode40
+  - thumb_index_middle_episode40
+  - index_middle_ring_episode40
   add_selftouch_combo_condition: true
   add_selftouch_phase_condition: true
+  require_all_selftouch_combinations: true
 Model:
   # Paper: 8 active joints (4 index + 4 thumb). Current selftouch_all joint streams are 16-wide, so hand_dim stays 16 unless the loader/data are cropped to active joints.
   hand_dim: 16
@@ -99,7 +117,7 @@ Model:
   - 16
   - 1
   use_combo_condition: true
-  combo_dim: 3
+  combo_dim: 6
   use_phase_condition: true
   phase_dim: 10
   use_mean_residual_head: true
@@ -109,6 +127,7 @@ Model:
   - index
   - thumb
   - middle
+  - ring
   temporal_window_steps: 20
 Motion:
 
@@ -121,6 +140,7 @@ Test:
     tactile_index_tip: 3.0
     tactile_thumb_tip: 0.8
     tactile_middle_tip: 3.5
+    tactile_ring_tip: 3.5
     tactile_loss: huber
     tactile_mae_weight: 4.0
     tactile_raw_l1_weight: 8.0
@@ -177,7 +197,12 @@ Test:
         tactile_contact_mae_weight: 1.0
         tactile_topk_weight: 0.45
         tactile_peak_weight: 0.5
-  model_load_path: /root/motionlearning/model_weight/selftouch_fcn_posvel/parameter_base/epoch0.pth
+      ring:
+        tactile_contact_mae_weight: 1.0
+        tactile_topk_weight: 0.45
+        tactile_peak_weight: 0.5
+  model_load_path:
+    /root/motionlearning/model_weight/selftouch_fcn_posvel/parameter_base/epoch0.pth
 
 Train:
   # --- Paper Section IV-A: Adam, lr=0.001, batch_size=100, 20000 epochs ---
@@ -204,6 +229,7 @@ Train:
     tactile_index_tip: 3.0
     tactile_thumb_tip: 0.8
     tactile_middle_tip: 3.5
+    tactile_ring_tip: 3.5
     tactile_loss: huber
     tactile_mae_weight: 4.0
     tactile_raw_l1_weight: 8.0
@@ -257,6 +283,10 @@ Train:
         tactile_topk_weight: 0.25
         tactile_peak_weight: 0.25
       middle:
+        tactile_contact_mae_weight: 1.0
+        tactile_topk_weight: 0.45
+        tactile_peak_weight: 0.5
+      ring:
         tactile_contact_mae_weight: 1.0
         tactile_topk_weight: 0.45
         tactile_peak_weight: 0.5
@@ -330,7 +360,7 @@ Sweep:
         - true
       combo_dim:
         values:
-        - 3
+        - 6
       use_phase_condition:
         values:
         - true

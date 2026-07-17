@@ -12,6 +12,14 @@ import gc
 import pdb
 from selftouch_offset_utils import base_target_count, target_window, valid_target_count
 
+from selftouch_combo_utils import (
+    COMBO_KEYS,
+    combo_vector_for_episode,
+    tactile_keys_for_episode,
+    validate_selftouch_combinations,
+    validate_selftouch_data_dir,
+)
+
 TACTILE_KEYS = [
     "tactile_index_tip",
     "tactile_thumb_tip",
@@ -24,17 +32,44 @@ JOINT_KEYS = [
     "hand_jnt_trq",
     "hand_jnt_cmd_pos",
 ]
-COMBO_KEYS = ("thumb_index", "thumb_middle", "index_middle")
+def _episode_timesteps_from_modalities(value_map):
+    for key in (*JOINT_KEYS, *TACTILE_KEYS):
+        value = value_map.get(key)
+        if value is None:
+            continue
+        arr = np.asarray(value)
+        if arr.ndim > 0:
+            return max(int(arr.shape[0]), 1)
+    return 1
 
 
-def _flatten_tactile(value):
+def _missing_tactile(value):
+    if value is None:
+        return True
+    arr = np.asarray(value)
+    if arr.dtype == object:
+        flat = arr.reshape(-1)
+        return flat.size == 0 or all(item is None for item in flat)
+    return False
+
+
+def _flatten_tactile(value, timesteps=1):
+    timesteps = max(int(timesteps or 1), 1)
+    if _missing_tactile(value):
+        return np.zeros((timesteps, 90), dtype=np.float32)
     arr = np.asarray(value)
     if arr.ndim == 3:
-        return einops.rearrange(arr, "t a d -> t (a d)")
+        return einops.rearrange(arr, "t a d -> t (a d)").astype(np.float32, copy=False)
     if arr.ndim == 2:
         return arr.astype(np.float32, copy=False)
-    t = arr.shape[0] if arr.ndim > 0 else 1
-    return np.zeros((t, 90), dtype=np.float32)
+    t = int(arr.shape[0]) if arr.ndim > 0 else timesteps
+    return np.zeros((max(t, timesteps, 1), 90), dtype=np.float32)
+
+
+def _finger_valid_mask(value_map, timesteps):
+    valid = [0.0 if _missing_tactile(value_map.get(key)) else 1.0 for key in TACTILE_KEYS]
+    valid = np.asarray(valid, dtype=np.float32)
+    return np.repeat(valid[None, :], max(int(timesteps or 1), 1), axis=0)
 
 
 class CustomDataLoader(BaseDataLoader):
@@ -42,7 +77,9 @@ class CustomDataLoader(BaseDataLoader):
         super().__init__()
         self.dataset_param = dataset_param
         self.mem="ram"
+        validate_selftouch_data_dir(self.dataset_param)
         dir_data, data_found = data_preproc.get_sequence_dict(self.dataset_param, mem=self.mem)
+        validate_selftouch_combinations(dir_data, self.dataset_param)
         # Change tactile shape
         dir_data=self.change_shape(dir_data)
         dir_data=self.add_context_features(dir_data)
@@ -66,7 +103,7 @@ class CustomDataLoader(BaseDataLoader):
 
         try:
             train_dir_data = data_preproc.scale_dir_data(train_dir_data, scaling_param, self.dataset_param, mem=self.mem)
-        except ValueError as exc:
+        except (KeyError, ValueError) as exc:
             if not scaling_param_exists:
                 raise
             print(f"[warn] stale scaling_param.pkl detected; recomputing scaler: {exc}")
@@ -98,9 +135,11 @@ class CustomDataLoader(BaseDataLoader):
     
     def change_shape(self,data):
         for ep, val in data.items():
+            timesteps = _episode_timesteps_from_modalities(val)
+            data[ep]["selftouch_finger_mask"] = _finger_valid_mask(val, timesteps)
             for key in TACTILE_KEYS:
                 if key in val:
-                    data[ep][key] = _flatten_tactile(val[key])
+                    data[ep][key] = _flatten_tactile(val[key], timesteps)
             for key in JOINT_KEYS:
                 if key in val:
                     data[ep][key] = np.asarray(val[key], dtype=np.float32)
@@ -121,14 +160,7 @@ class CustomDataLoader(BaseDataLoader):
 
             if add_combo:
                 text = str(ep).lower().replace("-", "_")
-                combo = np.zeros((3,), dtype=np.float32)
-                for idx, name in enumerate(COMBO_KEYS):
-                    if name in text:
-                        combo[idx] = 1.0
-                        break
-                if combo.sum() == 0.0:
-                    # Unknown names get a neutral condition rather than a hard zero.
-                    combo[:] = 1.0 / float(combo.size)
+                combo = combo_vector_for_episode(ep)
                 val["selftouch_combo"] = np.repeat(combo[None, :], steps, axis=0)
 
             if add_phase:
@@ -202,16 +234,7 @@ class CustomDataLoader(BaseDataLoader):
         }
 
     def _episode_tactile_keys(self, episode_name, episode):
-        text = str(episode_name).lower().replace("-", "_")
-        if "thumb_index" in text:
-            preferred = ("tactile_thumb_tip", "tactile_index_tip")
-        elif "thumb_middle" in text:
-            preferred = ("tactile_thumb_tip", "tactile_middle_tip")
-        elif "index_middle" in text:
-            preferred = ("tactile_index_tip", "tactile_middle_tip")
-        else:
-            preferred = ("tactile_index_tip", "tactile_thumb_tip", "tactile_middle_tip")
-        return [key for key in preferred if key in episode]
+        return tactile_keys_for_episode(episode_name, episode)
 
     def _max_abs_tactile(self, episode, keys, indices):
         values = []

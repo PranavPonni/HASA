@@ -37,8 +37,8 @@ from training_speed_utils import (
 from selftouch_plot_utils import active_loss_coef, load_scaling_param, plot_tactile_temporal_profiles
 
 
-FINGER_NAMES = ["index", "thumb", "middle"]
-FINGER_KEYS = ["tactile_index_tip", "tactile_thumb_tip", "tactile_middle_tip"]
+FINGER_NAMES = ["index", "thumb", "middle", "ring"]
+FINGER_KEYS = ["tactile_index_tip", "tactile_thumb_tip", "tactile_middle_tip", "tactile_ring_tip"]
 WANDB_TACTILE_METRIC_KEYS = {
     "tactile_line_mae",
     "tactile_line_raw_accuracy",
@@ -51,6 +51,8 @@ WANDB_TACTILE_METRIC_KEYS = {
     "thumb_raw_accuracy",
     "middle_mae",
     "middle_raw_accuracy",
+    "ring_mae",
+    "ring_raw_accuracy",
     "raw_mae",
     "raw_acc",
 }
@@ -216,8 +218,8 @@ class RNN_controller(AbstractController):
 
                 data = dataset.get_test_data()
                 eval_start = time.perf_counter()
-                (total_loss, loss_index, loss_thumb, loss_middle), \
-                        (tactile_index_tip, tactile_thumb_tip, tactile_middle_tip) = \
+                (total_loss, loss_index, loss_thumb, loss_middle, loss_ring), \
+                        (tactile_index_tip, tactile_thumb_tip, tactile_middle_tip, tactile_ring_tip) = \
                         self.eval_loss_func(data, eval_batch_size)
                 eval_seconds = time.perf_counter() - eval_start
                 
@@ -230,6 +232,7 @@ class RNN_controller(AbstractController):
                                 "loss_index": float(loss_index),
                                 "loss_thumb": float(loss_thumb),
                                 "loss_middle": float(loss_middle),
+                                "loss_ring": float(loss_ring),
                                 "best_total_loss": float(best_total_loss)}
 
                 if should_run_period(epoch, total_epoch, plot_every):
@@ -238,6 +241,7 @@ class RNN_controller(AbstractController):
                         "index": tactile_index_tip,
                         "thumb": tactile_thumb_tip,
                         "middle": tactile_middle_tip,
+                        "ring": tactile_ring_tip,
                     }
                     plot_bundle = plot_tactile_temporal_profiles(
                         data=data,
@@ -280,6 +284,7 @@ class RNN_controller(AbstractController):
                 print(f"Epoch {epoch + 1}/{total_epoch} | lr={current_lr:.2e} | "
                       f"total={float(total_loss):.4f} | idx={float(loss_index):.4f} | "
                       f"thb={float(loss_thumb):.4f} | mid={float(loss_middle):.4f} | "
+                      f"ring={float(loss_ring):.4f} | "
                       f"best={float(best_total_loss):.4f}{metric_msg}"
                       f" | steps={train_steps}"
                       f" | sec train={train_seconds:.1f}"
@@ -364,11 +369,19 @@ class RNN_controller(AbstractController):
             return
 
         means = []
-        for key in FINGER_KEYS:
+        finger_mask = train_data.get("selftouch_finger_mask")
+        for finger_idx, key in enumerate(FINGER_KEYS):
             value = train_data.get(key)
             if value is None or not torch.is_tensor(value) or value.ndim < 3:
                 return
-            target = value[:, 1:, :] if value.shape[1] > 1 else value
+            target_start = 1 if value.shape[1] > 1 else 0
+            target_stop = int(value.shape[1])
+            target = value[:, target_start:target_stop, :] if value.shape[1] > 1 else value
+            if torch.is_tensor(finger_mask) and finger_mask.ndim >= 3 and finger_idx < finger_mask.shape[-1]:
+                valid = finger_mask[:, target_start:target_stop, finger_idx]
+                valid = valid.reshape(valid.shape[0], -1).amax(dim=1) > 0.5
+                if bool(valid.any()):
+                    target = target[valid]
             means.append(target.mean(dim=(0, 1)))
         bias = torch.cat(means, dim=0).to(device=self.device, dtype=output_net.bias.dtype)
         if bias.numel() != output_net.bias.numel():
@@ -472,22 +485,22 @@ class RNN_controller(AbstractController):
         if eval_batch_size <= 0 or num_samples <= eval_batch_size:
             return self.calc_loss_func(data, "test")
 
-        weighted_losses = np.zeros(4, dtype=np.float64)
-        pred_chunks = [[], [], []]
+        weighted_losses = np.zeros(5, dtype=np.float64)
+        pred_chunks = [[], [], [], []]
         total_count = 0
         for start in range(0, num_samples, eval_batch_size):
             end = min(start + eval_batch_size, num_samples)
             chunk = self._slice_data_batch(data, start, end)
-            (total_loss, loss_index, loss_thumb, loss_middle), preds = self.calc_loss_func(chunk, "test")
+            (total_loss, loss_index, loss_thumb, loss_middle, loss_ring), preds = self.calc_loss_func(chunk, "test")
             chunk_count = end - start
-            for idx, loss_value in enumerate((total_loss, loss_index, loss_thumb, loss_middle)):
+            for idx, loss_value in enumerate((total_loss, loss_index, loss_thumb, loss_middle, loss_ring)):
                 if torch.is_tensor(loss_value):
                     loss_value = loss_value.detach()
                 weighted_losses[idx] += float(loss_value) * chunk_count
             for idx, pred in enumerate(preds):
                 pred_chunks[idx].append(pred.detach().cpu())
             total_count += chunk_count
-            del chunk, preds, total_loss, loss_index, loss_thumb, loss_middle
+            del chunk, preds, total_loss, loss_index, loss_thumb, loss_middle, loss_ring
 
         averaged = tuple(float(value / max(total_count, 1)) for value in weighted_losses)
         preds = tuple(torch.cat(chunks, dim=0) for chunks in pred_chunks)

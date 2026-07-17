@@ -4,14 +4,14 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import torch
 from torch import nn
 from selftouch_feature_utils import build_joint_features, joint_feature_dim
-from selftouch_loss_utils import active_tactile_loss, finger_loss_config
+from selftouch_loss_utils import active_tactile_loss, finger_loss_config, select_valid_finger_targets
 
 
 class SelfTouch(nn.Module):
     """Pure FCN (no temporal) baseline for selftouch prediction.
 
     Input:  Joint positions(t) [hand_dim]
-    Output: Predicted Self-touch Tactile(t) for index_tip, thumb_tip, and middle_tip [tactile_dim each]
+        Output: Predicted Self-touch Tactile(t) for index_tip, thumb_tip, middle_tip, and ring_tip [tactile_dim each]
     """
 
     def __init__(self, param):
@@ -24,7 +24,7 @@ class SelfTouch(nn.Module):
         self.use_tactile_history = bool(param.get("use_tactile_history", False))
         self.tactile_history_steps = max(1, int(param.get("tactile_history_steps", 1)))
         self.tactile_history_fingers = tuple(
-            param.get("tactile_history_fingers", ("index", "thumb", "middle"))
+            param.get("tactile_history_fingers", ("index", "thumb", "middle", "ring"))
         )
         rec_dim = param["rec_dim"]
         dropout = param["dropout"]
@@ -40,7 +40,7 @@ class SelfTouch(nn.Module):
             tactile_history_steps=self.tactile_history_steps,
             tactile_history_fingers=self.tactile_history_fingers,
         )
-        rec_out = self.tactile_dim * 3  # index_tip + thumb_tip + middle_tip
+        rec_out = self.tactile_dim * 4  # index_tip + thumb_tip + middle_tip + ring_tip
 
         self.net = nn.Sequential(
             nn.Linear(rec_in, rec_dim // 2),
@@ -92,15 +92,16 @@ class SelfTouch(nn.Module):
         out = self._activate_output(self.net(x))
         idx_pred = out[..., :self.tactile_dim]
         thumb_pred = out[..., self.tactile_dim:self.tactile_dim * 2]
-        middle_pred = out[..., self.tactile_dim * 2:]
-        return idx_pred, thumb_pred, middle_pred
+        middle_pred = out[..., self.tactile_dim * 2:self.tactile_dim * 3]
+        ring_pred = out[..., self.tactile_dim * 3:]
+        return idx_pred, thumb_pred, middle_pred, ring_pred
 
     def forward_loss(self, tactile_index_tip, tactile_thumb_tip,
                      hand_jnt_pos=None, hand_jnt_cmd_pos=None, hand_jnt_vel=None, hand_jnt_trq=None,
-                     data_found=None, loss_coef=None,
+                     data_found=None, selftouch_finger_mask=None, loss_coef=None,
                      tactile_middle_tip=None, tactile_ring_tip=None, **_unused):
         loss_coef = loss_coef or {}
-        idx_pred, thumb_pred, middle_pred = self.forward(
+        idx_pred, thumb_pred, middle_pred, ring_pred = self.forward(
             hand_jnt_pos=hand_jnt_pos,
             hand_jnt_vel=hand_jnt_vel,
             hand_jnt_trq=hand_jnt_trq,
@@ -112,28 +113,57 @@ class SelfTouch(nn.Module):
         )
 
         # Targets: tactile at t=1..T-1
+        target_start = 1
+        target_stop = tactile_index_tip.shape[1]
+        index_target = tactile_index_tip[:, target_start:target_stop, :]
+        thumb_target = tactile_thumb_tip[:, target_start:target_stop, :]
+        middle_target = tactile_middle_tip[:, target_start:target_stop, :]
+        ring_target = tactile_ring_tip[:, target_start:target_stop, :]
+        idx_loss_pred, index_target = select_valid_finger_targets(
+            idx_pred, index_target, selftouch_finger_mask, "index", target_start, target_stop
+        )
+        thumb_loss_pred, thumb_target = select_valid_finger_targets(
+            thumb_pred, thumb_target, selftouch_finger_mask, "thumb", target_start, target_stop
+        )
+        middle_loss_pred, middle_target = select_valid_finger_targets(
+            middle_pred, middle_target, selftouch_finger_mask, "middle", target_start, target_stop
+        )
+        ring_loss_pred, ring_target = select_valid_finger_targets(
+            ring_pred, ring_target, selftouch_finger_mask, "ring", target_start, target_stop
+        )
         loss_index = active_tactile_loss(
-            idx_pred,
-            tactile_index_tip[:, 1:, :],
+            idx_loss_pred,
+            index_target,
             finger_loss_config(loss_coef, "tactile_index_tip"),
         )
         loss_thumb = active_tactile_loss(
-            thumb_pred,
-            tactile_thumb_tip[:, 1:, :],
+            thumb_loss_pred,
+            thumb_target,
             finger_loss_config(loss_coef, "tactile_thumb_tip"),
         )
         loss_middle = active_tactile_loss(
-            middle_pred,
-            tactile_middle_tip[:, 1:, :],
+            middle_loss_pred,
+            middle_target,
             finger_loss_config(loss_coef, "tactile_middle_tip"),
+        )
+        loss_ring = active_tactile_loss(
+            ring_loss_pred,
+            ring_target,
+            finger_loss_config(loss_coef, "tactile_ring_tip"),
         )
 
         total_loss = (
             loss_coef.get("tactile_index_tip", 1.0) * loss_index
             + loss_coef.get("tactile_thumb_tip", 1.0) * loss_thumb
             + loss_coef.get("tactile_middle_tip", 1.0) * loss_middle
+            + loss_coef.get("tactile_ring_tip", 1.0) * loss_ring
         )
-        return (total_loss, loss_index, loss_thumb, loss_middle), (idx_pred, thumb_pred, middle_pred)
+        return (total_loss, loss_index, loss_thumb, loss_middle, loss_ring), (
+            idx_pred,
+            thumb_pred,
+            middle_pred,
+            ring_pred,
+        )
 
 
 if __name__ == "__main__":

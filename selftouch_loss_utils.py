@@ -34,6 +34,8 @@ def supervised_contrastive_loss(features, labels, temperature=0.1):
 
 def reconstruction_loss(pred, target, loss_cfg=None):
     """State reconstruction loss with Huber/SmoothL1 by default."""
+    if pred.numel() == 0 or target.numel() == 0:
+        return (pred.sum() + target.sum()) * 0.0
     name = _loss_name(loss_cfg)
     if name in {"mse", "l2"}:
         return F.mse_loss(pred, target)
@@ -72,6 +74,64 @@ def finger_loss_config(loss_coef, tactile_key):
     if isinstance(slopes, dict) and tactile_key in slopes:
         cfg["tactile_raw_slope"] = slopes[tactile_key]
     return cfg
+
+
+FINGER_MASK_INDEX = {
+    "index": 0,
+    "thumb": 1,
+    "middle": 2,
+    "ring": 3,
+    "tactile_index_tip": 0,
+    "tactile_thumb_tip": 1,
+    "tactile_middle_tip": 2,
+    "tactile_ring_tip": 3,
+}
+
+
+def select_valid_finger_targets(
+    pred,
+    target,
+    finger_mask=None,
+    finger="index",
+    target_start=0,
+    target_stop=None,
+):
+    """Drop samples whose tactile target for this finger was genuinely missing."""
+    if finger_mask is None:
+        return pred, target
+    if not torch.is_tensor(finger_mask):
+        finger_mask = torch.as_tensor(finger_mask, device=pred.device)
+    else:
+        finger_mask = finger_mask.to(device=pred.device)
+
+    if finger_mask.ndim < 2 or finger_mask.shape[0] != pred.shape[0]:
+        return pred, target
+
+    if finger_mask.ndim >= 3:
+        finger_idx = FINGER_MASK_INDEX.get(str(finger), 0)
+        if finger_idx >= finger_mask.shape[-1]:
+            return pred, target
+        mask = finger_mask[..., finger_idx]
+    else:
+        mask = finger_mask
+
+    target_start = int(target_start or 0)
+    target_stop = int(target_stop if target_stop is not None else target_start + target.shape[1])
+    mask = mask[:, target_start:target_stop]
+    if mask.shape[1] != target.shape[1]:
+        steps = min(mask.shape[1], target.shape[1], pred.shape[1])
+        if steps <= 0:
+            return pred[:0], target[:0]
+        mask = mask[:, :steps]
+        pred = pred[:, :steps, :]
+        target = target[:, :steps, :]
+
+    valid_rows = mask.reshape(mask.shape[0], -1).float().amax(dim=1) > 0.5
+    if bool(valid_rows.all()):
+        return pred, target
+    if not bool(valid_rows.any()):
+        return pred[:0], target[:0]
+    return pred[valid_rows], target[valid_rows]
 
 
 def _diff_time(x):
@@ -358,6 +418,8 @@ def active_tactile_loss(pred, target, loss_cfg=None):
     only by explicit nonzero config weights and are used during training to
     improve start alignment and curve shape, not to post-process predictions.
     """
+    if pred.numel() == 0 or target.numel() == 0:
+        return (pred.sum() + target.sum()) * 0.0
     cfg = loss_cfg or {}
     loss = reconstruction_loss(pred, target, cfg)
 

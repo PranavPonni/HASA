@@ -36,7 +36,7 @@ def raw_acc(row, finger):
 
 
 def aggregate_raw_acc(row):
-    vals = [raw_acc(row, finger) for finger in ("index", "thumb", "middle")]
+    vals = [raw_acc(row, finger) for finger in ("index", "thumb", "middle", "ring")]
     vals = [value for value in vals if math.isfinite(value)]
     if vals:
         return sum(vals) / len(vals)
@@ -89,6 +89,7 @@ def main():
                 "index_raw_acc": raw_acc(row, "index"),
                 "thumb_raw_acc": raw_acc(row, "thumb"),
                 "middle_raw_acc": raw_acc(row, "middle"),
+                "ring_raw_acc": raw_acc(row, "ring"),
                 "rmse": num(row.get("prediction_rmse")),
                 "p95": num(row.get("prediction_error_p95")),
                 "bias": num(row.get("prediction_bias")),
@@ -109,14 +110,15 @@ def main():
 
     print(
         "| Rank | Model/input | Epoch | MAE ↓ | Overall raw taxel acc % ↑ | "
-        "Index raw % | Thumb raw % | Middle raw % | RMSE ↓ | p95 error ↓ | Bias raw-pred | Abs bias | Profile acc % tie-break |"
+        "Index raw % | Thumb raw % | Middle raw % | Ring raw % | RMSE ↓ | p95 error ↓ | Bias raw-pred | Abs bias | Profile acc % tie-break |"
     )
-    print("|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+    print("|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for rank, rec in enumerate(records, 1):
         print(
             f"| {rank} | `{rec['variant']}` | {rec['epoch']} | {fmt(rec['mae'])} | "
             f"{fmt(rec['raw_acc'])} | {fmt(rec['index_raw_acc'])} | "
             f"{fmt(rec['thumb_raw_acc'])} | {fmt(rec['middle_raw_acc'])} | "
+            f"{fmt(rec['ring_raw_acc'])} | "
             f"{fmt(rec['rmse'])} | {fmt(rec['p95'])} | "
             f"{fmt(rec['bias'])} | {fmt(rec['abs_bias'])} | "
             f"{fmt(rec['profile_acc'])} |"

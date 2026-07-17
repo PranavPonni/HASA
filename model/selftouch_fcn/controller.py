@@ -35,8 +35,8 @@ from training_speed_utils import (
 from selftouch_plot_utils import active_loss_coef, plot_tactile_temporal_profiles
 
 
-FINGER_NAMES = ["index", "thumb", "middle"]
-FINGER_KEYS = ["tactile_index_tip", "tactile_thumb_tip", "tactile_middle_tip"]
+FINGER_NAMES = ["index", "thumb", "middle", "ring"]
+FINGER_KEYS = ["tactile_index_tip", "tactile_thumb_tip", "tactile_middle_tip", "tactile_ring_tip"]
 
 
 class RNN_controller(AbstractController):
@@ -124,8 +124,8 @@ class RNN_controller(AbstractController):
                     continue
 
                 data = dataset.get_test_data()
-                (total_loss, loss_index, loss_thumb, loss_middle), \
-                        (tactile_index_tip, tactile_thumb_tip, tactile_middle_tip) = self.calc_loss_func(data, "test")
+                (total_loss, loss_index, loss_thumb, loss_middle, loss_ring), \
+                        (tactile_index_tip, tactile_thumb_tip, tactile_middle_tip, tactile_ring_tip) = self.calc_loss_func(data, "test")
                 
                 if best_total_loss>total_loss:
                     best_total_loss=total_loss
@@ -136,6 +136,7 @@ class RNN_controller(AbstractController):
                                 "loss_index": loss_index,
                                 "loss_thumb": loss_thumb,
                                 "loss_middle": loss_middle,
+                                "loss_ring": loss_ring,
                                 "best_total_loss": best_total_loss}
 
                 if should_run_period(epoch, total_epoch, plot_every):
@@ -143,6 +144,7 @@ class RNN_controller(AbstractController):
                         "index": tactile_index_tip,
                         "thumb": tactile_thumb_tip,
                         "middle": tactile_middle_tip,
+                        "ring": tactile_ring_tip,
                     }
                     plot_bundle = plot_tactile_temporal_profiles(
                         data=data,
@@ -163,6 +165,7 @@ class RNN_controller(AbstractController):
                 print(f"Epoch {epoch + 1}/{total_epoch} | lr={current_lr:.2e} | "
                       f"total={float(total_loss):.4f} | idx={float(loss_index):.4f} | "
                       f"thb={float(loss_thumb):.4f} | mid={float(loss_middle):.4f} | "
+                      f"ring={float(loss_ring):.4f} | "
                       f"best={float(best_total_loss):.4f}")
 
                 early_metric = logger_dict.get(early_stopper.monitor, total_loss)

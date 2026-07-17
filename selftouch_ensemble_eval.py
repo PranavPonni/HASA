@@ -14,6 +14,9 @@ from ruamel.yaml import YAML
 from selftouch_plot_utils import plot_tactile_temporal_profiles
 
 
+FINGER_NAMES = ["index", "thumb", "middle", "ring"]
+FINGER_KEYS = ["tactile_index_tip", "tactile_thumb_tip", "tactile_middle_tip", "tactile_ring_tip"]
+
 DEFAULT_VARIANTS = (
     "selftouch_fcn_postrqcmd",
     "selftouch_fcn_poscmdvel",
@@ -115,22 +118,19 @@ def predict(model, data, loss_coef):
     with torch.no_grad():
         _, preds = model.forward_loss(**data, loss_coef=loss_coef)
     if isinstance(preds, dict):
-        return {
-            "index": preds["index"].detach().cpu(),
-            "thumb": preds["thumb"].detach().cpu(),
-            "middle": preds["middle"].detach().cpu(),
-        }
+        return {name: preds[name].detach().cpu() for name in FINGER_NAMES if name in preds}
     return {
-        "index": preds[0].detach().cpu(),
-        "thumb": preds[1].detach().cpu(),
-        "middle": preds[2].detach().cpu(),
+        name: preds[idx].detach().cpu()
+        for idx, name in enumerate(FINGER_NAMES)
+        if idx < len(preds)
     }
 
 
 def average_predictions(predictions):
-    min_len = min(pred[key].shape[1] for pred in predictions for key in ("index", "thumb", "middle"))
+    common_fingers = [name for name in FINGER_NAMES if all(name in pred for pred in predictions)]
+    min_len = min(pred[key].shape[1] for pred in predictions for key in common_fingers)
     averaged = {}
-    for key in ("index", "thumb", "middle"):
+    for key in common_fingers:
         stacked = torch.stack([pred[key][:, :min_len, :] for pred in predictions], dim=0)
         averaged[key] = stacked.mean(dim=0)
     return averaged
@@ -178,8 +178,8 @@ def main():
         plot_dir=str(output_dir),
         dataset_param=first_cfg["Dataset"],
         combinations=first_cfg["Dataset"].get("combinations", []),
-        finger_names=["index", "thumb", "middle"],
-        finger_keys=["tactile_index_tip", "tactile_thumb_tip", "tactile_middle_tip"],
+        finger_names=FINGER_NAMES,
+        finger_keys=FINGER_KEYS,
         next_step=True,
     )
 
