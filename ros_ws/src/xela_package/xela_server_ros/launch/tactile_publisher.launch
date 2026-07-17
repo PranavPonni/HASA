@@ -2,7 +2,7 @@
     <arg name="ns" default=""/>
     <arg name="file" default="/etc/xela/xServ.ini"/>
     <arg name="port" default="5000"/>
-    <arg name="ip"   default="127.0.0.1"/>
+    <arg name="ip"   default="192.168.11.26"/>
     <arg name="d"    default="0"/>
 
     <group

@@ -10,12 +10,17 @@ class TactileSubscriber:
         self.lock = threading.Lock()
         topic_name = f"{self.topic_prefix}/xServTopic"
         self.sub = rospy.Subscriber(topic_name, SensStream, self.callback)
-        self._init_flg=False
+        self._init_flg = False
+        self.init_success = False
         rospy.loginfo(f"Trying to subscribe topic: {topic_name}")
         while not self._init_flg and not rospy.is_shutdown():
             rospy.sleep(0.1)
-        rospy.loginfo(f"Succeed in subscribing topic: {topic_name}")
-        self.topic_name=topic_name
+        if self._init_flg:
+            self.init_success = True
+            rospy.loginfo(f"Succeed in subscribing topic: {topic_name}")
+        else:
+            rospy.logwarn(f"No initial data received from {topic_name} (rospy shutdown before first message)")
+        self.topic_name = topic_name
 
 
     def callback(self, msg):
@@ -41,6 +46,7 @@ class TactileSubscriber:
                     return val
                 else:
                     rospy.logwarn(f"Sensor {self.topic_name} is not valid")
+                    return None
             else:
                 rospy.logwarn("No tactile data received yet.")
                 return None

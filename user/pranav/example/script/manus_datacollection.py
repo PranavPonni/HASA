@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 
 import os
+import glob as _glob
+# Clean up stale FastDDS shared memory port files that cause SHM transport errors
+for _f in _glob.glob('/dev/shm/fastrtps_port*'):
+    try:
+        os.remove(_f)
+    except OSError:
+        pass
+del _glob
+
 import shutil
 import glob
 import threading
@@ -122,7 +131,7 @@ from py_node_exec import NodeExec
 from allegro_package import AllegroHand
 from xela_py import TactileSubscriber
 
-DATA_DIR = "/home/handlingteam2/HASA/user/pranav/example/data/tasks/rugby_rotation"
+DATA_DIR = "/home/handlingteam2/HASA/user/pranav/example/data/selftouch/index_middle"
 MAX_TIMESTEP = 400
 CTRL_FREQ = 10.0
 HAND_TOPIC_PREFIX = "allegroHand_0"
@@ -216,10 +225,24 @@ class XelAllegro:
                  tactile_topic_prefixes: list = TACTILE_TOPIC_PREFIXES,
                  manus_subscriber: ManusGloveSubscriber = None):
         self._hand = AllegroHand(hand_topic_prefix=hand_topic_prefix, ctrl_freq=ctrl_freq)
-        self._tactile_sensors = {
-            prefix: TactileSubscriber(topic_prefix=prefix)
-            for prefix in tactile_topic_prefixes
-        }
+        # Initialize all tactile sensors in parallel so a slow sensor doesn't
+        # block the others from subscribing.
+        self._tactile_sensors = {}
+        _lock = threading.Lock()
+
+        def _init_sensor(prefix):
+            sub = TactileSubscriber(topic_prefix=prefix)
+            with _lock:
+                self._tactile_sensors[prefix] = sub
+
+        _threads = [
+            threading.Thread(target=_init_sensor, args=(p,), daemon=True)
+            for p in tactile_topic_prefixes
+        ]
+        for t in _threads:
+            t.start()
+        for t in _threads:
+            t.join()
         self._manus_subscriber = manus_subscriber
 
     def get_observation(self) -> dict:

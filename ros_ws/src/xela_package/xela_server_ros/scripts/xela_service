@@ -242,7 +242,7 @@ class ArgMgr(object):
                 ARGM.add_argument('-d', '--debug_level', default=0, choices=range(4), type=int,
                                   help="{}Debug Level (0-3) (default: 0)\033[0m".format(color))
             if "i" in fstring:
-                ARGM.add_argument('-i', '--ip', default="127.0.0.1", help=f"{color}Server IP\033[0m")
+                ARGM.add_argument('-i', '--ip', default="192.168.11.26", help=f"{color}Server IP\033[0m")
             ARGM.add_argument('--debug', action="store_true", help=argparse.SUPPRESS)
             ARGM.add_argument('--roslog', help=argparse.SUPPRESS)
             ARGM.add_argument('--rosname', help=argparse.SUPPRESS)
@@ -547,7 +547,10 @@ def get_ip(setIP=None):
     Returns:
         str: The local IP address.
     """
-    if setIP is None or "127.0.0.1" in setIP:
+    if setIP:
+        return setIP
+
+    if setIP is None:
         socket = importlib.import_module("socket")
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
@@ -557,8 +560,6 @@ def get_ip(setIP=None):
             IP = ['127.0.0.1']
         finally:
             s.close()
-    else:
-        IP = [setIP]
     return IP[0]
 
 
