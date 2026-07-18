@@ -10,6 +10,7 @@ import sys
 import csv
 import glob
 import pickle
+import time
 
 import numpy as np
 import torch
@@ -36,12 +37,18 @@ from selftouch_plot_utils import (
 )
 from training_speed_utils import (
     EarlyStopper,
+    as_float,
     apply_lr_schedule,
     amp_enabled,
     autocast,
+    configure_cuda_memory_fraction,
+    configure_torch_threads,
+    data_batch_size,
+    empty_cuda_cache,
     make_grad_scaler,
     maybe_watch_model,
     should_run_period,
+    slice_data_batch,
     wandb_init_kwargs,
     wandb_log_heartbeat,
 )
@@ -102,10 +109,21 @@ class RNN_controller(AbstractController):
 
     # ── train ─────────────────────────────────────────────────────────────────
     def train_controller(self, sweep: bool = False):
-        self.device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+        configure_torch_threads(self.mode_param)
+        device_setting = str(self.mode_param.get("device", os.environ.get("SELFTOUCH_DEVICE", "auto"))).lower()
+        if device_setting == "cpu":
+            self.device = torch.device("cpu")
+        elif device_setting.startswith("cuda") and torch.cuda.is_available():
+            self.device = torch.device("cuda:0")
+        elif device_setting in {"auto", ""}:
+            self.device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+        else:
+            print(f"[warn] requested device '{device_setting}' is unavailable; falling back to CPU")
+            self.device = torch.device("cpu")
         print("Device:", self.device)
 
-        batch_size      = self.mode_param["batch_size"]
+        batch_size      = int(os.environ.get("SELFTOUCH_BATCH_SIZE", self.mode_param["batch_size"]))
+        eval_batch_size = int(os.environ.get("SELFTOUCH_EVAL_BATCH_SIZE", self.mode_param.get("eval_batch_size", 0)) or 0)
         total_epoch     = self.mode_param["num_epochs"]
         lr              = self.mode_param["lr"]
         weight_decay    = self.mode_param.get("weight_decay", 1e-4)
@@ -113,12 +131,17 @@ class RNN_controller(AbstractController):
         eval_every      = self.mode_param.get("eval_every", 1)
         plot_every      = self.mode_param.get("plot_every", eval_every)
         self.grad_clip_norm = self.mode_param.get("grad_clip_norm", 1.0)
+        empty_cache_after_save = bool(self.mode_param.get("empty_cache_after_save", True))
+        empty_cache_after_eval = bool(self.mode_param.get("empty_cache_after_eval", False))
+        train_step_sleep_seconds = float(os.environ.get("SELFTOUCH_TRAIN_STEP_SLEEP", self.mode_param.get("train_step_sleep_seconds", 0.0)) or 0.0)
+        max_train_batches_per_epoch = int(os.environ.get("SELFTOUCH_MAX_TRAIN_BATCHES", self.mode_param.get("max_train_batches_per_epoch", 0)) or 0)
         combinations    = self.dataset_param.get("combinations", [])
         if combinations:
             self.model_param["num_classes"] = len(combinations)
         self.loss_coef  = active_loss_coef(self.mode_param["loss_coef"], combinations)
         temperature     = self.mode_param.get("temperature", 0.1)
 
+        configure_cuda_memory_fraction(self.mode_param, self.device)
         self.model = SelfTouchContrastiveGRU(self.model_param).to(self.device)
         os.makedirs(self.model_param["model_save_path"], exist_ok=True)
         plot_dir = os.path.join(self.model_param["model_save_path"], "plots")
@@ -140,6 +163,8 @@ class RNN_controller(AbstractController):
         self.scaler = make_grad_scaler(self.use_amp)
         if self.use_amp:
             print("[speed] AMP enabled")
+        if eval_batch_size > 0:
+            print(f"[cuda] Eval runs in CPU-sourced chunks of {eval_batch_size}")
 
         metrics_csv = os.path.join(self.model_param["model_save_path"], "epoch_metrics.csv")
         with open(metrics_csv, "w", newline="") as f:
@@ -155,6 +180,7 @@ class RNN_controller(AbstractController):
         for epoch in range(total_epoch):
             current_lr = apply_lr_schedule(self.optimizer, lr, epoch, self.mode_param)
             self.model.train()
+            train_steps = 0
             for data in dataset:
                 self.optimizer.zero_grad(set_to_none=True)
                 data = {k: v.to(self.device) for k, v in data.items()}
@@ -204,6 +230,11 @@ class RNN_controller(AbstractController):
                             self.model.parameters(), self.grad_clip_norm
                         )
                     self.optimizer.step()
+                if train_step_sleep_seconds > 0.0:
+                    time.sleep(train_step_sleep_seconds)
+                train_steps += 1
+                if max_train_batches_per_epoch > 0 and train_steps >= max_train_batches_per_epoch:
+                    break
 
             self.model.eval()
             with torch.no_grad():
@@ -212,42 +243,16 @@ class RNN_controller(AbstractController):
                     torch.save(self.model.state_dict(), ckpt)
                     wandb.save(ckpt, policy="now")
                     print("Model saved at:", ckpt)
+                    if empty_cache_after_save:
+                        empty_cuda_cache(self.device)
 
                 if not should_run_period(epoch, total_epoch, eval_every):
                     print(f"Epoch {epoch + 1}/{total_epoch} | eval skipped")
                     continue
 
                 test_data = dataset.get_test_data()
-                test_d = {k: v.to(self.device) for k, v in test_data.items()}
-                pos_t  = test_d["hand_jnt_pos"]
-                vel_t  = test_d["hand_jnt_vel"]
-                trq_t  = test_d["hand_jnt_trq"]
-                cmd_t  = test_d["hand_jnt_cmd_pos"]
-                lbl_t  = test_d["label"]
-
-                with autocast(self.use_amp):
-                    sup_con_t = _supcon_loss(
-                        nn.functional.normalize(self.model.encode(pos_t, vel_t, trq_t, cmd_t), dim=-1),
-                        lbl_t, temperature,
-                    )
-                    test_losses, test_preds = self.model.forward_loss(
-                        tactile_index_tip=test_d["tactile_index_tip"],
-                        tactile_thumb_tip=test_d["tactile_thumb_tip"],
-                        tactile_middle_tip=test_d["tactile_middle_tip"],
-                        hand_jnt_pos=pos_t,
-                        hand_jnt_vel=vel_t,
-                        hand_jnt_trq=trq_t,
-                        hand_jnt_cmd_pos=cmd_t,
-                        labels=lbl_t,
-                        loss_coef=self.loss_coef,
-                    )
-
-                tl = (
-                    self.loss_coef.get("contrastive", 1.0) * float(sup_con_t.detach().cpu())
-                    + self.loss_coef.get("classification", 1.0) * float(test_losses["classification"].detach().cpu())
-                    + self.loss_coef.get("tactile_index_tip", 1.0) * float(test_losses["tactile_index"].detach().cpu())
-                    + self.loss_coef.get("tactile_thumb_tip", 1.0) * float(test_losses["tactile_thumb"].detach().cpu())
-                    + self.loss_coef.get("tactile_middle_tip", 1.0) * float(test_losses["tactile_middle"].detach().cpu())
+                tl, test_losses, test_preds = self.eval_contrastive_func(
+                    test_data, eval_batch_size, temperature
                 )
                 if tl < best_total_loss:
                     best_total_loss = tl
@@ -256,19 +261,22 @@ class RNN_controller(AbstractController):
                     "epoch":            epoch + 1,
                     "lr":               current_lr,
                     "total_loss":       tl,
-                    "contrastive_loss": float(sup_con_t.detach().cpu()),
-                    "cls_loss":         float(test_losses["classification"].detach().cpu()),
-                    "loss_index":       float(test_losses["tactile_index"].detach().cpu()),
-                    "loss_thumb":       float(test_losses["tactile_thumb"].detach().cpu()),
-                    "loss_middle":      float(test_losses["tactile_middle"].detach().cpu()),
+                    "contrastive_loss": test_losses["contrastive"],
+                    "cls_loss":         test_losses["classification"],
+                    "loss_index":       test_losses["tactile_index"],
+                    "loss_thumb":       test_losses["tactile_thumb"],
+                    "loss_middle":      test_losses["tactile_middle"],
                     "best_total_loss":  float(best_total_loss),
                 }
 
                 plot_paths = {"metrics": {}, "images": {}}
                 if should_run_period(epoch, total_epoch, plot_every):
                     plot_paths = self._save_epoch_plots(
-                        test_d, test_preds, epoch, plot_dir, combinations,
-                        dataset.test_episode_names, pos_t, vel_t, trq_t, cmd_t, lbl_t
+                        test_data, test_preds, epoch, plot_dir, combinations,
+                        dataset.test_episode_names,
+                        test_data["hand_jnt_pos"], test_data["hand_jnt_vel"],
+                        test_data["hand_jnt_trq"], test_data["hand_jnt_cmd_pos"],
+                        test_data["label"],
                     )
                 log.update(plot_paths.get("metrics", {}))
                 for wandb_key, path in plot_paths.get("images", {}).items():
@@ -298,6 +306,70 @@ class RNN_controller(AbstractController):
                         f"{early_stopper.monitor} plateaued; best={early_stopper.best:.6f}"
                     )
                     break
+                if empty_cache_after_eval:
+                    empty_cuda_cache(self.device)
+
+    def eval_contrastive_func(self, data, eval_batch_size, temperature):
+        num_samples = data_batch_size(data)
+        chunk_size = int(eval_batch_size or 0)
+        if chunk_size <= 0:
+            chunk_size = max(num_samples, 1)
+
+        losses_out = {
+            "contrastive": 0.0,
+            "classification": 0.0,
+            "tactile_index": 0.0,
+            "tactile_thumb": 0.0,
+            "tactile_middle": 0.0,
+        }
+        pred_chunks = None
+        for start in range(0, num_samples, chunk_size):
+            end = min(start + chunk_size, num_samples)
+            weight = float(end - start) / float(max(num_samples, 1))
+            chunk = {
+                k: v.to(self.device) if torch.is_tensor(v) else v
+                for k, v in slice_data_batch(data, start, end).items()
+            }
+            pos_t = chunk["hand_jnt_pos"]
+            vel_t = chunk["hand_jnt_vel"]
+            trq_t = chunk["hand_jnt_trq"]
+            cmd_t = chunk["hand_jnt_cmd_pos"]
+            lbl_t = chunk["label"]
+            with autocast(self.use_amp):
+                sup_con = _supcon_loss(
+                    nn.functional.normalize(self.model.encode(pos_t, vel_t, trq_t, cmd_t), dim=-1),
+                    lbl_t,
+                    temperature,
+                )
+                chunk_losses, chunk_preds = self.model.forward_loss(
+                    tactile_index_tip=chunk["tactile_index_tip"],
+                    tactile_thumb_tip=chunk["tactile_thumb_tip"],
+                    tactile_middle_tip=chunk["tactile_middle_tip"],
+                    hand_jnt_pos=pos_t,
+                    hand_jnt_vel=vel_t,
+                    hand_jnt_trq=trq_t,
+                    hand_jnt_cmd_pos=cmd_t,
+                    labels=lbl_t,
+                    loss_coef=self.loss_coef,
+                )
+            losses_out["contrastive"] += as_float(sup_con) * weight
+            for key in ("classification", "tactile_index", "tactile_thumb", "tactile_middle"):
+                losses_out[key] += as_float(chunk_losses[key]) * weight
+            if pred_chunks is None:
+                pred_chunks = {key: [] for key in chunk_preds}
+            for key, pred in chunk_preds.items():
+                pred_chunks[key].append(pred.detach().cpu())
+            del chunk, chunk_losses, chunk_preds, sup_con
+
+        total = (
+            self.loss_coef.get("contrastive", 1.0) * losses_out["contrastive"]
+            + self.loss_coef.get("classification", 1.0) * losses_out["classification"]
+            + self.loss_coef.get("tactile_index_tip", 1.0) * losses_out["tactile_index"]
+            + self.loss_coef.get("tactile_thumb_tip", 1.0) * losses_out["tactile_thumb"]
+            + self.loss_coef.get("tactile_middle_tip", 1.0) * losses_out["tactile_middle"]
+        )
+        preds = {key: torch.cat(chunks, dim=0) for key, chunks in (pred_chunks or {}).items()}
+        return total, losses_out, preds
 
         if not sweep:
             wandb.finish()
@@ -336,7 +408,19 @@ class RNN_controller(AbstractController):
         if pos_seq.shape[0] < 2:
             return None
         with torch.no_grad():
-            embs = self.model.encode(pos_seq, vel_seq, trq_seq, cmd_seq).detach().cpu().numpy()
+            chunk_size = int(self.mode_param.get("eval_batch_size", 4) or 4)
+            emb_chunks = []
+            for start in range(0, pos_seq.shape[0], chunk_size):
+                end = min(start + chunk_size, pos_seq.shape[0])
+                emb_chunks.append(
+                    self.model.encode(
+                        pos_seq[start:end].to(self.device),
+                        vel_seq[start:end].to(self.device),
+                        trq_seq[start:end].to(self.device),
+                        cmd_seq[start:end].to(self.device),
+                    ).detach().cpu()
+                )
+            embs = torch.cat(emb_chunks, dim=0).numpy()
         embs = np.nan_to_num(embs, nan=0.0, posinf=0.0, neginf=0.0)
         lbl_np = labels.detach().cpu().numpy()
         pca_pts = _pca_2d(embs)

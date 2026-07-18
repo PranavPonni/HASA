@@ -179,6 +179,14 @@ def empty_cuda_cache(device):
         pass
 
 
+def as_float(value):
+    import torch
+
+    if torch.is_tensor(value):
+        return float(value.detach().cpu())
+    return float(value)
+
+
 def data_batch_size(data):
     import torch
 

@@ -137,7 +137,8 @@ Test:
   model_load_path: /root/motionlearning/model_weight/selftouch_contrastive_gru/parameter_base/epoch0.pth
 
 Train:
-  batch_size: 8
+  batch_size: 4
+  train_micro_batch_size: 1
   lr: 4e-05
   lr_schedule:
     milestones:
@@ -154,6 +155,12 @@ Train:
   eval_every: 1
   plot_every: 10
   use_amp: true
+  torch_num_threads: 1
+  eval_batch_size: 4
+  eval_micro_batch_size: 1
+  empty_cache_after_save: true
+  empty_cache_after_eval: true
+  cuda_memory_fraction: 0.10
   wandb_watch: false
   num_epochs: 400
   temperature: 0.1
@@ -201,7 +208,7 @@ Sweep:
         - false
     Train:
       batch_size:
-        values: [8, 16, 32]
+        values: [4]
       lr:
         distribution: log_uniform_values
         min: 3.0e-05

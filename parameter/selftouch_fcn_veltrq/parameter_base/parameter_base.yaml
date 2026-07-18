@@ -206,7 +206,7 @@ Test:
 
 Train:
   # --- Paper Section IV-A: Adam, lr=0.001, batch_size=100, 20000 epochs ---
-  batch_size: 16
+  batch_size: 4
   lr: 0.0002
   lr_schedule:
     milestones:
@@ -298,19 +298,20 @@ Train:
   early_stop_patience: 500
   early_stop_min_delta: 0.5
   early_stop_min_epochs: 500
-  eval_batch_size: 32
+  eval_batch_size: 4
   adamw_foreach: false
   empty_cache_after_save: true
-  empty_cache_after_eval: false
+  empty_cache_after_eval: true
   assert_cpu_batches: true
-  cuda_memory_fraction:
+  cuda_memory_fraction: 0.10
   use_amp: true
+  eval_micro_batch_size: 1
   torch_num_threads: 1
   init_output_bias_from_tactile_mean: true
   zero_output_head_on_bias_init: true
   output_head_init_std: 0.0001
 
-  train_micro_batch_size: 4
+  train_micro_batch_size: 1
   grad_clip_norm: 2.0
 Pretrain:
 
@@ -385,7 +386,7 @@ Sweep:
     Train:
       batch_size:
         values:
-        - 16
+        - 4
       lr:
         values:
         - 0.0002

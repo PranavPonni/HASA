@@ -22,15 +22,19 @@ import time
 import copy
 from training_speed_utils import (
     EarlyStopper,
+    as_float,
     apply_lr_schedule,
     amp_enabled,
     autocast,
     configure_cuda_memory_fraction,
     configure_torch_threads,
+    data_batch_size,
+    empty_cuda_cache,
     make_grad_scaler,
     maybe_watch_model,
     selftouch_loss_step,
     should_run_period,
+    slice_data_batch,
 )
 from selftouch_plot_utils import active_loss_coef, plot_tactile_temporal_profiles
 
@@ -60,11 +64,14 @@ class RNN_controller(AbstractController):
         print("Device: ", self.device)
 
         batch_size = int(os.environ.get("SELFTOUCH_BATCH_SIZE", self.mode_param["batch_size"]))
+        eval_batch_size = int(os.environ.get("SELFTOUCH_EVAL_BATCH_SIZE", self.mode_param.get("eval_batch_size", 0)) or 0)
         total_epoch = self.mode_param["num_epochs"]
         lr = self.mode_param["lr"]
         model_save_iter = self.mode_param["model_save_iter"]
         eval_every = self.mode_param.get("eval_every", 1)
         plot_every = self.mode_param.get("plot_every", eval_every)
+        empty_cache_after_save = bool(self.mode_param.get("empty_cache_after_save", True))
+        empty_cache_after_eval = bool(self.mode_param.get("empty_cache_after_eval", False))
         train_step_sleep_seconds = float(os.environ.get("SELFTOUCH_TRAIN_STEP_SLEEP", self.mode_param.get("train_step_sleep_seconds", 0.0)) or 0.0)
         max_train_batches_per_epoch = int(os.environ.get("SELFTOUCH_MAX_TRAIN_BATCHES", self.mode_param.get("max_train_batches_per_epoch", 0)) or 0)
 
@@ -94,6 +101,8 @@ class RNN_controller(AbstractController):
         self.scaler = make_grad_scaler(self.use_amp)
         if self.use_amp:
             print("[speed] AMP enabled")
+        if eval_batch_size > 0:
+            print(f"[cuda] Eval runs in CPU-sourced chunks of {eval_batch_size}")
 
         best_total_loss=1e10
         early_stopper = EarlyStopper(self.mode_param)
@@ -118,6 +127,8 @@ class RNN_controller(AbstractController):
                     torch.save(self.model.state_dict(), model_save_path)
                     wandb.save(model_save_path,policy="now")
                     print("Model saved at:", model_save_path) 
+                    if empty_cache_after_save:
+                        empty_cuda_cache(self.device)
 
                 if not should_run_period(epoch, total_epoch, eval_every):
                     print(f"Epoch {epoch + 1}/{total_epoch} | eval skipped")
@@ -125,19 +136,19 @@ class RNN_controller(AbstractController):
 
                 data = dataset.get_test_data()
                 (total_loss, loss_index, loss_thumb, loss_middle, loss_ring), \
-                        (tactile_index_tip, tactile_thumb_tip, tactile_middle_tip, tactile_ring_tip) = self.calc_loss_func(data, "test")
+                        (tactile_index_tip, tactile_thumb_tip, tactile_middle_tip, tactile_ring_tip) = self.eval_loss_func(data, eval_batch_size)
                 
                 if best_total_loss>total_loss:
                     best_total_loss=total_loss
 
                 logger_dict={"lr": current_lr,
                                 "epoch": epoch + 1,
-                                "total_loss": total_loss,
-                                "loss_index": loss_index,
-                                "loss_thumb": loss_thumb,
-                                "loss_middle": loss_middle,
-                                "loss_ring": loss_ring,
-                                "best_total_loss": best_total_loss}
+                                "total_loss": as_float(total_loss),
+                                "loss_index": as_float(loss_index),
+                                "loss_thumb": as_float(loss_thumb),
+                                "loss_middle": as_float(loss_middle),
+                                "loss_ring": as_float(loss_ring),
+                                "best_total_loss": as_float(best_total_loss)}
 
                 if should_run_period(epoch, total_epoch, plot_every):
                     preds = {
@@ -163,10 +174,10 @@ class RNN_controller(AbstractController):
 
                 wandb.log(logger_dict)
                 print(f"Epoch {epoch + 1}/{total_epoch} | lr={current_lr:.2e} | "
-                      f"total={float(total_loss):.4f} | idx={float(loss_index):.4f} | "
-                      f"thb={float(loss_thumb):.4f} | mid={float(loss_middle):.4f} | "
-                      f"ring={float(loss_ring):.4f} | "
-                      f"best={float(best_total_loss):.4f}")
+                      f"total={as_float(total_loss):.4f} | idx={as_float(loss_index):.4f} | "
+                      f"thb={as_float(loss_thumb):.4f} | mid={as_float(loss_middle):.4f} | "
+                      f"ring={as_float(loss_ring):.4f} | "
+                      f"best={as_float(best_total_loss):.4f}")
 
                 early_metric = logger_dict.get(early_stopper.monitor, total_loss)
                 if early_stopper.step(float(early_metric), epoch):
@@ -175,6 +186,8 @@ class RNN_controller(AbstractController):
                         f"{early_stopper.monitor} plateaued; best={early_stopper.best:.6f}"
                     )
                     break
+                if empty_cache_after_eval:
+                    empty_cuda_cache(self.device)
 
         if not sweep:
             wandb.finish()                   
@@ -211,3 +224,26 @@ class RNN_controller(AbstractController):
             use_amp=getattr(self, "use_amp", False),
             mode_param=self.mode_param,
         )
+
+    def eval_loss_func(self, data, eval_batch_size=0):
+        eval_batch_size = int(eval_batch_size or 0)
+        num_samples = data_batch_size(data)
+        if eval_batch_size <= 0 or num_samples <= eval_batch_size:
+            return self.calc_loss_func(data, "test")
+
+        weighted_losses = None
+        pred_chunks = None
+        for start in range(0, num_samples, eval_batch_size):
+            end = min(start + eval_batch_size, num_samples)
+            weight = float(end - start) / float(max(num_samples, 1))
+            losses, preds = self.calc_loss_func(slice_data_batch(data, start, end), "test")
+            losses = tuple(losses)
+            preds = tuple(preds)
+            if weighted_losses is None:
+                weighted_losses = [0.0 for _ in losses]
+                pred_chunks = [[] for _ in preds]
+            for idx, loss_value in enumerate(losses):
+                weighted_losses[idx] += as_float(loss_value) * weight
+            for idx, pred in enumerate(preds):
+                pred_chunks[idx].append(pred.detach().cpu() if torch.is_tensor(pred) else torch.as_tensor(pred))
+        return tuple(weighted_losses), tuple(torch.cat(chunks, dim=0) for chunks in pred_chunks)

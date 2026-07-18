@@ -7,6 +7,13 @@ os.environ.setdefault("WANDB__SERVICE_WAIT", "300")
 os.environ.setdefault("WANDB_CONSOLE", "off")
 os.environ.setdefault("WANDB_DISABLE_CODE", "true")
 os.environ.setdefault("WANDB_DISABLE_GIT", "true")
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+os.environ.setdefault("CUDA_MODULE_LOADING", "LAZY")
+os.environ.setdefault("MPLBACKEND", "Agg")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 warnings.filterwarnings(
     "ignore",
     message=r"urllib3 .* doesn't match a supported version!",

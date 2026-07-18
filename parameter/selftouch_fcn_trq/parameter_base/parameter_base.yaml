@@ -291,12 +291,13 @@ Train:
   early_stop_patience: 500
   early_stop_min_delta: 0.5
   early_stop_min_epochs: 500
-  eval_batch_size: 8
+  eval_batch_size: 4
+  eval_micro_batch_size: 1
   adamw_foreach: false
   empty_cache_after_save: true
   empty_cache_after_eval: true
   assert_cpu_batches: true
-  cuda_memory_fraction: 0.15
+  cuda_memory_fraction: 0.10
   use_amp: true
   torch_num_threads: 1
   init_output_bias_from_tactile_mean: true
@@ -381,7 +382,7 @@ Sweep:
     Train:
       batch_size:
         values:
-        - 16
+        - 4
       lr:
         values:
         - 0.0002
