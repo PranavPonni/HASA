@@ -44,6 +44,10 @@ class SelfTouch(nn.Module):
         self.hand_dim = int(param["hand_dim"])
         self.tactile_dim = int(param["tactile_dim"])
         self.input_offset = int(param.get("input_offset", 0))
+        self.output_min = float(param.get("output_min", 0.1))
+        self.output_max = float(param.get("output_max", 0.9))
+        if not self.output_min < self.output_max:
+            raise ValueError("output_min must be smaller than output_max")
         self.input_modalities = tuple(param.get("input_modalities", self.INPUT_MODALITIES))
         if self.input_modalities != self.INPUT_MODALITIES:
             raise ValueError("selftouch_fcn_pos requires hand_jnt_pos only")
@@ -113,6 +117,14 @@ class SelfTouch(nn.Module):
     def _init_mean_head(self):
         nn.init.zeros_(self.mean_net.weight)
         nn.init.zeros_(self.mean_net.bias)
+
+    def _activate_output(self, x):
+        return self.output_min + (self.output_max - self.output_min) * torch.sigmoid(x)
+
+    def output_bias_from_normalized_target(self, target):
+        unit = (target - self.output_min) / (self.output_max - self.output_min)
+        eps = torch.finfo(target.dtype).eps
+        return torch.logit(unit.clamp(min=eps, max=1.0 - eps))
 
     def _finger_loss_coef(self, loss_coef, tactile_key):
         cfg = dict(loss_coef or {})
@@ -230,7 +242,7 @@ class SelfTouch(nn.Module):
 
         taxel = self.output_net(decoded)
         mean_adjust = self.mean_net(decoded).repeat_interleave(self.tactile_dim, dim=-1)
-        out = taxel + mean_adjust
+        out = self._activate_output(taxel + mean_adjust)
 
         idx_pred = out[..., : self.tactile_dim]
         thumb_pred = out[..., self.tactile_dim : self.tactile_dim * 2]

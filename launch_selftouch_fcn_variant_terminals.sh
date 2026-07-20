@@ -4,7 +4,7 @@ set -euo pipefail
 TERMINAL_CMD="${TERMINAL_CMD:-x-terminal-emulator}"
 LOG_DIR="${LOG_DIR:-logs/selftouch_fcn_variants}"
 SWEEP_COUNT="${SWEEP_COUNT:-1}"
-MAX_ACTIVE_TERMINAL_JOBS="${MAX_ACTIVE_TERMINAL_JOBS:-4}"
+MAX_ACTIVE_TERMINAL_JOBS="${MAX_ACTIVE_TERMINAL_JOBS:-1}"
 SLOT_DIR="${SLOT_DIR:-/tmp/selftouch_fcn_variant_slots}"
 
 variants=(
@@ -55,7 +55,7 @@ run:
 
 Then come back to this root shell and run:
 
-  cd /root/motionlearning
+  cd /home/handling04/Documents/HASA
   ./launch_selftouch_fcn_variant_terminals.sh
 
 If you are connected through SSH or VS Code without a real desktop display,
@@ -74,7 +74,7 @@ for variant in "${variants[@]}"; do
   log_path="${LOG_DIR}/${variant}.log"
   title="${variant}"
   run_cmd=$(cat <<EOF
-cd /root/motionlearning
+cd /home/handling04/Documents/HASA
 mkdir -p "$LOG_DIR"
 mkdir -p "$SLOT_DIR"
 echo "[\$(date '+%Y-%m-%d %H:%M:%S')] START ${variant}" | tee -a "$log_path"
@@ -100,8 +100,8 @@ while [ -z "\$slot_fd" ]; do
 done
 echo "[\$(date '+%Y-%m-%d %H:%M:%S')] ${variant} acquired slot \${slot_id}" | tee -a "$log_path"
 WANDB_MODE=offline \\
-WANDB_DIR=/root/motionlearning/wandb \\
-WANDB_CACHE_DIR=/root/motionlearning/.wandb-cache \\
+WANDB_DIR=/home/handling04/Documents/HASA/wandb \\
+WANDB_CACHE_DIR=/home/handling04/Documents/HASA/.wandb-cache \\
 WANDB_CONSOLE=off \\
 WANDB_DISABLE_CODE=true \\
 WANDB_DISABLE_GIT=true \\
@@ -111,6 +111,10 @@ OPENBLAS_NUM_THREADS=1 \\
 NUMEXPR_NUM_THREADS=1 \\
 TORCH_NUM_THREADS=1 \\
 SELFTOUCH_TORCH_THREADS=1 \\
+SELFTOUCH_TRAIN_MICRO_BATCH_SIZE=1 \\
+SELFTOUCH_EVAL_BATCH_SIZE=2 \\
+SELFTOUCH_EVAL_MICRO_BATCH_SIZE=2 \\
+SELFTOUCH_CUDA_MEMORY_FRACTION=0.80 \\
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \\
 python3 main.py \\
   -mode sweep \\

@@ -163,9 +163,9 @@ def build_scaler(data_root: str, modalities):
 # -------- script entry --------
 def main():
     ap = argparse.ArgumentParser(description="Build scaling_param.pkl from episode PKLs (robust shapes)")
-    ap.add_argument("--data-root", default="/root/motionlearning/data_server/new/selftouch",
+    ap.add_argument("--data-root", default="/home/handling04/Documents/HASA/data_server/new/selftouch",
                     help="Root folder with episode0..episode100 containing PKLs")
-    ap.add_argument("--out", default="/root/motionlearning/parameter/selftouch_fcn_pos/wobbly-sweep-1/scaling_param.pkl",
+    ap.add_argument("--out", default="/home/handling04/Documents/HASA/parameter/selftouch_fcn_pos/wobbly-sweep-1/scaling_param.pkl",
                     help="Destination scaling_param.pkl path")
     ap.add_argument("--modalities", nargs="+",
                     default=["tactile_index_tip", "tactile_thumb_tip"],

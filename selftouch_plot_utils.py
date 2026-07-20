@@ -21,14 +21,14 @@ FINGER_COLORS = {
     "middle": "#35b779",
     "ring": "#8d63e8",
 }
-TACTILE_PLOT_TITLE = "Predicted self-touch vs raw tactile (taxel-mean raw values)"
+TACTILE_PLOT_TITLE = "Predicted self-touch vs raw tactile (baseline-relative raw values)"
 TACTILE_TAXEL_ERROR_TITLE = "Raw taxel absolute error (all taxels, raw values)"
 TAXELS_PER_FINGER = 90
 
 TACTILE_XMAX = 400
-TACTILE_YMIN = -30.0
-TACTILE_YMAX = 30.0
-TACTILE_YTICKS = [-30, -20, -10, 0, 10, 20, 30]
+TACTILE_YMIN = -120.0
+TACTILE_YMAX = 160.0
+TACTILE_YTICKS = [-120, -80, -40, 0, 40, 80, 120, 160]
 PROFILE_ACCURACY_SCALE = TACTILE_YMAX - TACTILE_YMIN
 
 
@@ -237,6 +237,49 @@ def _tactile_ylim(series: Iterable[np.ndarray]) -> Tuple[float, float]:
     return float(np.floor(lo / 10.0) * 10.0), float(np.ceil(hi / 10.0) * 10.0)
 
 
+def _converging_tactile_ylim(profiles: Sequence[Mapping]) -> Tuple[float, float]:
+    """Shared limits that tighten naturally as the prediction error decreases."""
+    traces = []
+    errors = []
+    for profile in profiles:
+        raw = np.asarray(profile["raw"], dtype=np.float32).reshape(-1)
+        pred = np.asarray(profile["pred"], dtype=np.float32).reshape(-1)
+        if raw.size:
+            traces.append(raw)
+        if pred.size:
+            traces.append(pred)
+        count = min(raw.size, pred.size)
+        if count:
+            errors.append(np.abs(raw[:count] - pred[:count]))
+    if not traces:
+        return TACTILE_YMIN, TACTILE_YMAX
+
+    values = np.concatenate(traces)
+    values = values[np.isfinite(values)]
+    if not values.size:
+        return TACTILE_YMIN, TACTILE_YMAX
+    lo = float(np.min(values))
+    hi = float(np.max(values))
+    signal_span = max(hi - lo, 1.0)
+    error_p95 = 0.0
+    if errors:
+        all_errors = np.concatenate(errors)
+        all_errors = all_errors[np.isfinite(all_errors)]
+        if all_errors.size:
+            error_p95 = float(np.percentile(all_errors, 95))
+
+    # Early inaccurate predictions receive generous context. As error falls,
+    # the padding contracts toward a small signal-relative margin.
+    padding = max(10.0, 0.12 * signal_span, 0.50 * error_p95)
+    lower = np.floor((lo - padding) / 10.0) * 10.0
+    upper = np.ceil((hi + padding) / 10.0) * 10.0
+    if upper - lower < 40.0:
+        center = 0.5 * (lower + upper)
+        lower = np.floor((center - 20.0) / 10.0) * 10.0
+        upper = np.ceil((center + 20.0) / 10.0) * 10.0
+    return float(lower), float(upper)
+
+
 def _start_aligned_prediction(raw: np.ndarray, pred: np.ndarray) -> Tuple[np.ndarray, float]:
     raw = np.asarray(raw, dtype=np.float32)
     pred = np.asarray(pred, dtype=np.float32)
@@ -268,10 +311,9 @@ def set_shared_y_limits_from_lines(axes) -> None:
 
 
 def draw_tactile_prediction_profile(ax, ts, raw, pred, err, color):
-    """Draw raw tactile, predicted self-touch, and error band on the shared raw scale."""
+    """Draw raw and predicted mean traces so agreement is visually explicit."""
     plot_raw = np.asarray(raw, dtype=np.float32)
     plot_pred = np.asarray(pred, dtype=np.float32)
-    mark_every = max(1, len(ts) // 18)
 
     ax.fill_between(
         ts,
@@ -279,34 +321,31 @@ def draw_tactile_prediction_profile(ax, ts, raw, pred, err, color):
         plot_pred,
         alpha=0.20,
         color=color,
-        label="raw-pred gap",
+        label="error margin",
         zorder=1,
     )
     ax.plot(
         ts,
         plot_raw,
         label="raw tactile",
-        color=color,
-        linewidth=1.8,
-        alpha=0.90,
+        color="black",
+        linewidth=2.2,
+        alpha=0.95,
         zorder=3,
     )
     pred_line, = ax.plot(
         ts,
         plot_pred,
-        label="pred self-touch avg taxels",
+        label="pred self-touch",
         color=color,
-        linewidth=2.8,
-        linestyle=(0, (4, 2)),
-        marker="o",
-        markevery=mark_every,
-        markersize=3.0,
-        zorder=10,
+        linewidth=2.2,
+        linestyle="--",
+        zorder=5,
     )
     try:
         import matplotlib.patheffects as path_effects
         pred_line.set_path_effects([
-            path_effects.Stroke(linewidth=4.8, foreground="white"),
+            path_effects.Stroke(linewidth=4.0, foreground="white", alpha=0.9),
             path_effects.Normal(),
         ])
     except Exception:
@@ -442,6 +481,9 @@ def _zero_pred_for_raw(raw_arr: np.ndarray, *, next_step: bool) -> np.ndarray:
 def _raw_metric_fieldnames(finger_names: Sequence[str]) -> List[str]:
     fieldnames = [
         "epoch",
+        "optimizer_step",
+        "seed",
+        "use_tactile_history",
         "prediction_mae",
         "prediction_accuracy",
         "prediction_profile_accuracy",
@@ -510,6 +552,9 @@ def _append_raw_metric_history(plot_dir: str, epoch: int, metrics: Mapping[str, 
             writer.writeheader()
         row = {
             "epoch": int(epoch),
+            "optimizer_step": int(metrics.get("optimizer_step", 0)),
+            "seed": int(metrics.get("seed", 0)),
+            "use_tactile_history": int(bool(metrics.get("use_tactile_history", False))),
             "prediction_mae": float(metrics.get("tactile_line_mae", 0.0)),
             "prediction_accuracy": float(metrics.get("tactile_line_raw_accuracy", 0.0)),
             "prediction_profile_accuracy": float(metrics.get("tactile_line_profile_accuracy", 0.0)),
@@ -813,6 +858,9 @@ def plot_tactile_temporal_profiles(
     next_step: bool = True,
     bias_calibration=False,
     bias_calibration_fingers: Optional[Sequence[str]] = None,
+    optimizer_step: Optional[int] = None,
+    seed: Optional[int] = None,
+    use_tactile_history: Optional[bool] = None,
 ) -> Dict[str, Dict]:
     """Save raw-value tactile profile, raw-value CSV, and raw metric history plots."""
     try:
@@ -1039,11 +1087,6 @@ def plot_tactile_temporal_profiles(
             scale=shared_raw_accuracy_scale,
         )
 
-    tactile_ylim = _tactile_ylim(
-        arr
-        for profile in profiles
-        for arr in (profile["raw"], profile["pred"])
-    )
     residual_ylim = _shared_ylim(profile["residual"] for profile in profiles)
     residual_bound = max(abs(residual_ylim[0]), abs(residual_ylim[1]), 1.0)
     residual_ylim = (-residual_bound, residual_bound)
@@ -1078,20 +1121,27 @@ def plot_tactile_temporal_profiles(
             residual = profile["residual"]
             err = profile["err"]
             color = FINGER_COLORS.get(name, "black")
-            draw_tactile_prediction_profile(ax, ts, raw, pred, err, color)
+            # Display both curves relative to the same raw-tactile baseline.
+            # This removes a large sensor DC offset without changing their gap.
+            display_offset = float(np.median(raw)) if np.asarray(raw).size else 0.0
+            display_raw = np.asarray(raw, dtype=np.float32) - display_offset
+            display_pred = np.asarray(pred, dtype=np.float32) - display_offset
+            draw_tactile_prediction_profile(
+                ax, ts, display_raw, display_pred, err, color
+            )
             title_name = name.capitalize()
-            if not profile["active"]:
-                title_name = f"{title_name} (excluded)"
-            shift_text = ""
-            if abs(float(profile["bias_calibration_shift"])) > 1e-6:
-                shift_text = f" | shift={profile['bias_calibration_shift']:.2f}"
             ax.set_title(
-                f"{title_name} | raw_acc={profile['accuracy']:.1f}% | bias={profile['bias']:.2f}{shift_text}",
+                f"{title_name} mean trace | taxel MAE={profile['mae']:.1f} "
+                f"| corr={profile['corr']:.3f} | R²={profile['r2']:.3f} "
+                f"| trace MAE={profile['profile_mae']:.1f}",
                 fontsize=9,
             )
-            ax.set_ylabel("tactile value")
-            ax.set_ylim(*tactile_ylim)
-            if tactile_ylim == (TACTILE_YMIN, TACTILE_YMAX):
+            ax.set_ylabel("raw value minus baseline")
+            profile_ylim = _converging_tactile_ylim([
+                {"raw": display_raw, "pred": display_pred}
+            ])
+            ax.set_ylim(*profile_ylim)
+            if profile_ylim == (TACTILE_YMIN, TACTILE_YMAX):
                 ax.set_yticks(TACTILE_YTICKS)
             ax.set_xlabel("Timestep")
             ax.tick_params(axis="x", which="both", labelbottom=True)
@@ -1153,6 +1203,52 @@ def plot_tactile_temporal_profiles(
     plt.close()
     images["tactile_profile"] = plot_path
     files["tactile_profile_csv"] = csv_path
+
+    identity_fig, identity_axes = plt.subplots(
+        1,
+        len(profiles),
+        figsize=(4.2 * len(profiles), 4.2),
+        constrained_layout=True,
+    )
+    if len(profiles) == 1:
+        identity_axes = [identity_axes]
+    for ax, profile in zip(identity_axes, profiles):
+        raw_flat = np.asarray(profile["raw_cmp"], dtype=np.float32).reshape(-1)
+        pred_flat = np.asarray(profile["pred_cmp"], dtype=np.float32).reshape(-1)
+        count = min(raw_flat.size, pred_flat.size)
+        raw_flat = raw_flat[:count]
+        pred_flat = pred_flat[:count]
+        finite = np.isfinite(raw_flat) & np.isfinite(pred_flat)
+        raw_flat = raw_flat[finite]
+        pred_flat = pred_flat[finite]
+        if raw_flat.size > 20000:
+            keep = np.linspace(0, raw_flat.size - 1, 20000, dtype=np.int64)
+            raw_flat = raw_flat[keep]
+            pred_flat = pred_flat[keep]
+        if raw_flat.size:
+            combined = np.concatenate([raw_flat, pred_flat])
+            lo, hi = np.percentile(combined, [1, 99])
+            if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
+                lo, hi = float(np.min(combined)), float(np.max(combined) + 1.0)
+            ax.scatter(raw_flat, pred_flat, s=3, alpha=0.12, color=FINGER_COLORS.get(profile["name"], "black"))
+            ax.plot([lo, hi], [lo, hi], color="black", linestyle="--", linewidth=1.5, label="perfect: pred = raw")
+            ax.set_xlim(lo, hi)
+            ax.set_ylim(lo, hi)
+        ax.set_aspect("equal", adjustable="box")
+        ax.set_xlabel("raw tactile")
+        ax.set_ylabel("predicted tactile")
+        ax.set_title(
+            f"{profile['name'].capitalize()} | corr={profile['corr']:.3f} | R²={profile['r2']:.3f}\n"
+            f"MAE={profile['mae']:.1f} | p95={profile['error_p95']:.1f}",
+            fontsize=9,
+        )
+        ax.grid(True, alpha=0.2)
+        ax.legend(fontsize=7)
+    identity_path = os.path.join(plot_dir, f"tactile_identity_epoch_{epoch:04d}.png")
+    identity_fig.suptitle("All-taxel agreement: points should lie on the dashed identity line", fontsize=12)
+    identity_fig.savefig(identity_path, dpi=160)
+    plt.close(identity_fig)
+    images["tactile_identity"] = identity_path
 
     residual_fig, residual_axes = plt.subplots(
         len(profiles),
@@ -1266,6 +1362,13 @@ def plot_tactile_temporal_profiles(
     metrics["tactile_line_uncalibrated_bias"] = float(np.mean([p["uncalibrated_bias"] for p in metric_profiles]))
     metrics["tactile_line_bias_calibration_shift_abs"] = float(
         np.mean([abs(p["bias_calibration_shift"]) for p in metric_profiles])
+    )
+    metrics["optimizer_step"] = int(optimizer_step or 0)
+    metrics["seed"] = int(seed if seed is not None else dataset_param.get("seed", 0))
+    metrics["use_tactile_history"] = bool(
+        use_tactile_history
+        if use_tactile_history is not None
+        else dataset_param.get("use_tactile_history", False)
     )
 
     history_metrics = dict(metrics)

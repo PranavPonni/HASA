@@ -14,11 +14,32 @@ import sys
 from multiprocessing import Pool
 import re
 
+LEGACY_PROJECT_ROOT = "/root/motionlearning"
+PROJECT_ROOT = os.environ.get("HASA_PROJECT_ROOT", os.path.dirname(os.path.abspath(__file__)))
+
+
+def _localize_legacy_paths(value):
+    if isinstance(value, str):
+        return value.replace(LEGACY_PROJECT_ROOT, PROJECT_ROOT)
+    if isinstance(value, dict):
+        for key in list(value.keys()):
+            value[key] = _localize_legacy_paths(value[key])
+        return value
+    if isinstance(value, list):
+        for idx, item in enumerate(value):
+            value[idx] = _localize_legacy_paths(item)
+        return value
+    return value
+
+
+def localize_legacy_paths(value):
+    return _localize_legacy_paths(value)
+
 def read_yaml(file_path):
     yaml = YAML()
     with open(file_path, 'r') as infile:
         data = yaml.load(infile)
-    return data
+    return _localize_legacy_paths(data)
 
 def write_yaml(data, file_path):
     yaml = YAML()
@@ -48,6 +69,10 @@ def load_images(directory, file_list):
 
 
 def get_dir_name(path):
+    original_path = path
+    path = _localize_legacy_paths(path)
+    if path != original_path:
+        print(f"[path] localized data path: {original_path} -> {path}")
     return sorted([name for name in os.listdir(path) if os.path.isdir(os.path.join(path, name))])
 
 
@@ -274,6 +299,7 @@ def process_dir_single(dir, data_param, file_list, mem):
         return dir, dir_data, data_exists
     
 def get_sequence_dict_single(data_param, mem="rom"):
+    data_param = _localize_legacy_paths(copy.deepcopy(data_param))
     dir_list = get_dir_name(data_param["data_dir"])
     file_list = _sequence_file_list(data_param, dir_list)
 
@@ -289,6 +315,7 @@ def get_sequence_dict_single(data_param, mem="rom"):
 
 
 def get_sequence_dict(data_param,mem="rom",proc_num=4):
+    data_param = _localize_legacy_paths(copy.deepcopy(data_param))
     dir_list=get_dir_name(data_param["data_dir"])
     file_list=_sequence_file_list(data_param, dir_list)
     
@@ -465,25 +492,50 @@ def load_pkl_file(file_path, log=False):
 
 
 def standardize_data(md, sc, sp):
-    mean = sc[1]
-    std_dev = sc[2]
+    mean = _scaling_stat(sc, "mean", 1)
+    std_dev = _scaling_stat(sc, "std", 2)
     safe_std = np.where(np.asarray(std_dev) == 0, 1.0, std_dev)
     md = (md - mean) / safe_std
     return md
 
+
+def _scaling_stat(sc, label, fallback_idx):
+    if isinstance(sc, pd.core.frame.DataFrame):
+        if label in sc.index:
+            return sc.loc[label].to_numpy()
+        sc = sc.to_numpy()
+    elif isinstance(sc, pd.core.series.Series):
+        if label in sc.index:
+            return sc.loc[label]
+        sc = sc.to_numpy()
+
+    sc = np.asarray(sc)
+    if fallback_idx < sc.shape[0]:
+        return sc[fallback_idx]
+    if label == "max" and sc.shape[0] > 0:
+        return sc[-1]
+    raise IndexError(
+        f"scaling statistics missing '{label}' row; "
+        f"available shape is {sc.shape}"
+    )
+
 def normalize_data(md, sc, sp):
-    range_ = sc[7] - sc[3]
+    min_value = _scaling_stat(sc, "min", 3)
+    max_value = _scaling_stat(sc, "max", 7)
+    range_ = max_value - min_value
     # Avoid division by zero for constant features (e.g. all-zero ring_tip).
-    # When range is 0 all values equal sc[3], so (md - sc[3]) = 0 and the
+    # When range is 0 all values equal min_value, so (md - min_value) = 0 and the
     # safe denominator of 1.0 maps every sample to sp[2][0] (a constant).
     safe_range = np.where(np.asarray(range_) == 0, 1.0, range_)
-    md = (md - sc[3]) * (sp[2][1] - sp[2][0]) / safe_range + sp[2][0]
+    md = (md - min_value) * (sp[2][1] - sp[2][0]) / safe_range + sp[2][0]
     return md
 
 def robust_normalize_data(md, sc, sp):
-    range_ = sc[6] - sc[4]
+    low_value = _scaling_stat(sc, "2%", 4)
+    high_value = _scaling_stat(sc, "98%", 6)
+    range_ = high_value - low_value
     safe_range = np.where(np.asarray(range_) == 0, 1.0, range_)
-    md = (md - sc[4]) * (sp[2][1] - sp[2][0]) / safe_range + sp[2][0]
+    md = (md - low_value) * (sp[2][1] - sp[2][0]) / safe_range + sp[2][0]
     max_idx = md > sp[2][1]
     min_idx = md < sp[2][0]
     md[max_idx] = sp[2][1]
@@ -497,9 +549,6 @@ def limit_data(md,sc,sp):
     return md
 
 def scaling_data(modality_data,scaling_rule,scaling_param):
-
-    if (type(scaling_rule) is pd.core.frame.DataFrame):
-        scaling_rule=scaling_rule.to_numpy()
 
     if scaling_param[0]=="n":
         modality_data=normalize_data(modality_data,scaling_rule,scaling_param)
@@ -541,11 +590,15 @@ def scale_dir_data(dir_data, scaling_param,dataset_param,mem="ram"):
 
 
 def unnormalize_data(md, sc, sp):
-    md = (md - sp[2][0]) * (sc[7] - sc[3]) / (sp[2][1] - sp[2][0]) + sc[3]
+    min_value = _scaling_stat(sc, "min", 3)
+    max_value = _scaling_stat(sc, "max", 7)
+    md = (md - sp[2][0]) * (max_value - min_value) / (sp[2][1] - sp[2][0]) + min_value
     return md
 
 def robust_unnormalize_data(md, sc, sp):
-    md = (md - sp[2][0]) * (sc[6] - sc[4]) / (sp[2][1] - sp[2][0]) + sc[4]
+    low_value = _scaling_stat(sc, "2%", 4)
+    high_value = _scaling_stat(sc, "98%", 6)
+    md = (md - sp[2][0]) * (high_value - low_value) / (sp[2][1] - sp[2][0]) + low_value
     return md
 
 def unlimit_data(md, sc, sp):

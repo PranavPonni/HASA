@@ -15,8 +15,8 @@ def main():
 
     args = parser.parse_args()
 
-    # dir=os.path.join("/root/motionlearning/data_server/selftouch","episode"+args.num)
-    dir="/root/motionlearning/data_server/stiff_pd/motion_all/0.7_-20_episode0"
+    # dir=os.path.join("/home/handling04/Documents/HASA/data_server/selftouch","episode"+args.num)
+    dir="/home/handling04/Documents/HASA/data_server/stiff_pd/motion_all/0.7_-20_episode0"
     
     data=util.get_episode(dir)
     pdb.set_trace()

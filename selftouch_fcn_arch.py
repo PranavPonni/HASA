@@ -10,16 +10,25 @@ class TemporalBlock(nn.Module):
     def __init__(self, dim, kernel_size=5, dilation=1, dropout=0.0):
         super().__init__()
         padding = (int(kernel_size) // 2) * int(dilation)
-        self.net = nn.Sequential(
-            nn.Conv1d(dim, dim, kernel_size=kernel_size, padding=padding, dilation=int(dilation)),
+        self.depthwise = nn.Conv1d(
+            dim,
+            dim,
+            kernel_size=int(kernel_size),
+            padding=padding,
+            dilation=int(dilation),
+            groups=dim,
+        )
+        self.pointwise = nn.Sequential(
+            nn.Conv1d(dim, dim * 2, kernel_size=1),
             nn.GELU(),
             nn.Dropout(p=dropout),
-            nn.Conv1d(dim, dim, kernel_size=kernel_size, padding=padding, dilation=int(dilation)),
+            nn.Conv1d(dim * 2, dim, kernel_size=1),
         )
         self.norm = nn.LayerNorm(dim)
 
     def forward(self, x):
-        y = self.net(x.transpose(1, 2)).transpose(1, 2)
+        y = self.depthwise(x.transpose(1, 2))
+        y = self.pointwise(y).transpose(1, 2)
         if y.shape[1] != x.shape[1]:
             y = y[:, : x.shape[1], :]
         return self.norm(x + y)
@@ -51,6 +60,14 @@ class ControlledTemporalSelfTouch(nn.Module):
         self.use_phase = bool(param.get("use_phase_condition", True))
         self.phase_dim = int(param.get("phase_dim", 10))
         self.use_mean_residual_head = bool(param.get("use_mean_residual_head", True))
+        self.use_input_temporal_deltas = bool(param.get("use_input_temporal_deltas", True))
+        self.output_min = float(param.get("output_min", 0.1))
+        self.output_max = float(param.get("output_max", 0.9))
+        if not self.output_min < self.output_max:
+            raise ValueError(
+                f"output_min must be smaller than output_max; got "
+                f"{self.output_min} >= {self.output_max}"
+            )
         self.temporal_window_steps = max(1, int(param.get("temporal_window_steps", 1)))
         self.use_tactile_history = bool(param.get("use_tactile_history", False))
         self.tactile_history_steps = max(1, int(param.get("tactile_history_steps", 1)))
@@ -58,7 +75,8 @@ class ControlledTemporalSelfTouch(nn.Module):
             param.get("tactile_history_fingers", ("index", "thumb", "middle", "ring"))
         )
 
-        rec_in = self.hand_dim * len(self.input_modalities)
+        features_per_stream = 3 if self.use_input_temporal_deltas else 1
+        rec_in = self.hand_dim * len(self.input_modalities) * features_per_stream
         if self.use_combo:
             rec_in += self.combo_dim
         if self.use_phase:
@@ -74,6 +92,7 @@ class ControlledTemporalSelfTouch(nn.Module):
             nn.Dropout(p=dropout),
             nn.Linear(encoder_dim, hidden_dim),
             nn.GELU(),
+            nn.LayerNorm(hidden_dim),
         )
         self.decoder = nn.Sequential(
             nn.Dropout(p=dropout),
@@ -116,7 +135,16 @@ class ControlledTemporalSelfTouch(nn.Module):
         return
 
     def _activate_output(self, x):
-        return x
+        # Tactile targets use min-max normalization to [0.1, 0.9].  Keeping the
+        # prediction in that same domain prevents inverse scaling from
+        # extrapolating a small normalized error into impossible raw values.
+        return self.output_min + (self.output_max - self.output_min) * torch.sigmoid(x)
+
+    def output_bias_from_normalized_target(self, target):
+        """Convert a normalized tactile target into pre-sigmoid output space."""
+        unit = (target - self.output_min) / (self.output_max - self.output_min)
+        eps = torch.finfo(target.dtype).eps
+        return torch.logit(unit.clamp(min=eps, max=1.0 - eps))
 
     def _finger_loss_coef(self, loss_coef, tactile_key):
         cfg = dict(loss_coef or {})
@@ -127,6 +155,13 @@ class ControlledTemporalSelfTouch(nn.Module):
         if isinstance(slopes, dict) and tactile_key in slopes:
             cfg["tactile_raw_slope"] = slopes[tactile_key]
         return cfg
+
+    @staticmethod
+    def _causal_delta(x):
+        delta = torch.zeros_like(x)
+        if x.shape[1] > 1:
+            delta[:, 1:, :] = x[:, 1:, :] - x[:, :-1, :]
+        return delta
 
     def _build_input(
         self,
@@ -157,6 +192,10 @@ class ControlledTemporalSelfTouch(nn.Module):
             if target_start is None:
                 target_start, target_stop = self._target_window(value.shape[1])
             chunks.append(value)
+            if self.use_input_temporal_deltas:
+                delta = self._causal_delta(value)
+                acceleration = self._causal_delta(delta)
+                chunks.extend([delta, acceleration])
         reference = chunks[0]
         if self.use_combo:
             if selftouch_combo is None:
@@ -230,9 +269,12 @@ class ControlledTemporalSelfTouch(nn.Module):
         hidden = self.encoder(x)
         hidden = self.temporal(hidden)
         decoded = self.decoder(hidden)
-        out = self._activate_output(self.output_net(decoded))
+        out = self.output_net(decoded)
         if self.use_mean_residual_head:
             out = out + self.mean_net(decoded).repeat_interleave(self.tactile_dim, dim=-1)
+        # Apply the bound after every output contribution, including the mean
+        # residual head.
+        out = self._activate_output(out)
         idx_pred = out[..., : self.tactile_dim]
         thumb_pred = out[..., self.tactile_dim : self.tactile_dim * 2]
         middle_pred = out[..., self.tactile_dim * 2 : self.tactile_dim * 3]

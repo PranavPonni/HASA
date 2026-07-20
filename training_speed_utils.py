@@ -1,6 +1,40 @@
 import os
 
 
+def configure_reproducibility(seed, deterministic=True):
+    """Seed every RNG used by the training pipeline.
+
+    This is intentionally called before dataset construction and model
+    initialization.  Deterministic algorithms are requested in warning mode so
+    an unsupported CUDA kernel is reported without killing a long experiment.
+    """
+    import random
+
+    import numpy as np
+    import torch
+
+    seed = int(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+
+    deterministic = bool(deterministic)
+    if hasattr(torch.backends, "cudnn"):
+        torch.backends.cudnn.deterministic = deterministic
+        torch.backends.cudnn.benchmark = not deterministic
+    if deterministic:
+        os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+        try:
+            torch.use_deterministic_algorithms(True, warn_only=True)
+        except (AttributeError, TypeError):
+            pass
+    print(f"[repro] seed={seed} | deterministic={deterministic}")
+    return seed
+
+
 def _env_int(name, default):
     try:
         return int(os.environ.get(name, default))
@@ -92,6 +126,15 @@ def maybe_watch_model(wandb_module, model, mode_param):
     )
 
 
+def wandb_log_heartbeat(wandb_module):
+    """Confirm a newly initialized W&B run without uploading model data."""
+    run = getattr(wandb_module, "run", None)
+    if run is None:
+        return False
+    wandb_module.log({"runtime/initialized": 1}, commit=False)
+    return True
+
+
 def get_wandb_entity(*params):
     for param in params:
         if not isinstance(param, dict):
@@ -108,7 +151,13 @@ def wandb_init_kwargs(mode_param, project=None, config=None):
     if entity:
         kwargs["entity"] = entity
     if config is not None:
+        config = dict(config)
+        for key in ("seed", "deterministic", "run_name"):
+            if key in mode_param:
+                config[key] = mode_param[key]
         kwargs["config"] = config
+    if mode_param.get("run_name"):
+        kwargs["name"] = str(mode_param["run_name"])
     kwargs["settings"] = wandb_service_settings()
     return kwargs
 
@@ -149,19 +198,26 @@ class EarlyStopper:
         return (epoch + 1) >= self.min_epochs and self.bad_epochs >= self.patience
 
 
-def lr_for_epoch(base_lr, epoch, mode_param):
+def lr_for_epoch(base_lr, epoch, mode_param, optimizer_step=None):
     schedule = (mode_param or {}).get("lr_schedule") or {}
     milestones = schedule.get("milestones", [])
     factors = schedule.get("factors", [])
+    unit = str(schedule.get("unit", "epoch")).strip().lower()
+    if unit in {"optimizer_step", "optimizer_steps", "step", "steps", "update", "updates"}:
+        progress = int(optimizer_step or 0)
+    else:
+        progress = int(epoch)
     factor = 1.0
     for milestone, next_factor in zip(milestones, factors):
-        if epoch >= int(milestone):
+        if progress >= int(milestone):
             factor = float(next_factor)
     return float(base_lr) * factor
 
 
-def apply_lr_schedule(optimizer, base_lr, epoch, mode_param):
-    lr = lr_for_epoch(base_lr, epoch, mode_param)
+def apply_lr_schedule(optimizer, base_lr, epoch, mode_param, optimizer_step=None):
+    if optimizer_step is None:
+        optimizer_step = int(getattr(optimizer, "_selftouch_optimizer_step", 0))
+    lr = lr_for_epoch(base_lr, epoch, mode_param, optimizer_step=optimizer_step)
     for group in optimizer.param_groups:
         group["lr"] = lr
     return lr
@@ -252,6 +308,9 @@ def _optimizer_step(model, optimizer, scaler, enabled_amp, mode_param):
         if grad_clip > 0.0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         optimizer.step()
+    optimizer._selftouch_optimizer_step = int(
+        getattr(optimizer, "_selftouch_optimizer_step", 0)
+    ) + 1
 
 
 def _forward_loss(model, data, loss_coef, enabled_amp):
@@ -280,6 +339,14 @@ def selftouch_loss_step(
     micro_size = micro_batch_size(mode_param, mode, batch_count)
 
     if is_train and optimizer is not None:
+        base_lr = float((mode_param or {}).get("lr", optimizer.param_groups[0]["lr"]))
+        apply_lr_schedule(
+            optimizer,
+            base_lr,
+            epoch=0,
+            mode_param=mode_param,
+            optimizer_step=int(getattr(optimizer, "_selftouch_optimizer_step", 0)),
+        )
         optimizer.zero_grad(set_to_none=True)
 
     if micro_size <= 0 or micro_size >= batch_count:
@@ -369,3 +436,54 @@ def configure_cuda_memory_fraction(mode_param, device):
     torch.cuda.set_per_process_memory_fraction(float(fraction), device_index)
     print(f"[cuda] per-process memory fraction capped at {fraction:.3f}")
     return fraction
+
+
+def contrastive_eval_step(model, data, device, loss_coef, temperature, use_amp, supcon_loss):
+    """Evaluate contrastive self-touch models in CPU-sourced GPU chunks."""
+    import torch
+
+    batch_count = data_batch_size(data)
+    chunk_size = micro_batch_size({}, "test", batch_count) or batch_count
+    loss_sums = {}
+    pred_chunks = {}
+    supcon_sum = 0.0
+    total_count = 0
+
+    for start in range(0, batch_count, chunk_size):
+        end = min(start + chunk_size, batch_count)
+        chunk_count = end - start
+        chunk = move_batch_to_device(slice_data_batch(data, start, end), device)
+        pos = chunk["hand_jnt_pos"]
+        vel = chunk["hand_jnt_vel"]
+        trq = chunk["hand_jnt_trq"]
+        cmd = chunk["hand_jnt_cmd_pos"]
+        labels = chunk["label"]
+        with autocast(bool(use_amp)):
+            supcon = supcon_loss(
+                torch.nn.functional.normalize(model.encode(pos, vel, trq, cmd), dim=-1),
+                labels,
+                temperature,
+            )
+            losses, preds = model.forward_loss(
+                tactile_index_tip=chunk["tactile_index_tip"],
+                tactile_thumb_tip=chunk["tactile_thumb_tip"],
+                tactile_middle_tip=chunk["tactile_middle_tip"],
+                hand_jnt_pos=pos,
+                hand_jnt_vel=vel,
+                hand_jnt_trq=trq,
+                hand_jnt_cmd_pos=cmd,
+                labels=labels,
+                loss_coef=loss_coef,
+            )
+        supcon_sum += float(supcon.detach().cpu()) * chunk_count
+        for key, value in losses.items():
+            loss_sums[key] = loss_sums.get(key, 0.0) + float(value.detach().cpu()) * chunk_count
+        for key, value in preds.items():
+            pred_chunks.setdefault(key, []).append(value.detach().cpu())
+        total_count += chunk_count
+        del chunk, losses, preds, supcon
+
+    denom = max(total_count, 1)
+    averaged_losses = {key: torch.tensor(value / denom) for key, value in loss_sums.items()}
+    combined_preds = {key: torch.cat(values, dim=0) for key, values in pred_chunks.items()}
+    return torch.tensor(supcon_sum / denom), averaged_losses, combined_preds

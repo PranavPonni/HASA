@@ -19,8 +19,9 @@ COMMON_ENV=(
   SELFTOUCH_TORCH_THREADS=1
   SELFTOUCH_DEVICE=cuda
   SELFTOUCH_TRAIN_MICRO_BATCH_SIZE=1
-  SELFTOUCH_EVAL_BATCH_SIZE=8
-  SELFTOUCH_CUDA_MEMORY_FRACTION=0.10
+  SELFTOUCH_EVAL_BATCH_SIZE=2
+  SELFTOUCH_EVAL_MICRO_BATCH_SIZE=2
+  SELFTOUCH_CUDA_MEMORY_FRACTION=0.80
   SELFTOUCH_TRAIN_STEP_SLEEP=0
   SELFTOUCH_MAX_TRAIN_BATCHES=20
   PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
@@ -45,8 +46,12 @@ launch_variant() {
 }
 
 launch_variant selftouch_fcn_pos 0
+wait "$(<"$LOG_DIR/selftouch_fcn_pos.pid")"
 launch_variant selftouch_fcn_cmd 3
+wait "$(<"$LOG_DIR/selftouch_fcn_cmd.pid")"
 launch_variant selftouch_fcn_trq 6
+wait "$(<"$LOG_DIR/selftouch_fcn_trq.pid")"
 launch_variant selftouch_fcn_vel 9
+wait "$(<"$LOG_DIR/selftouch_fcn_vel.pid")"
 
 echo "Logs: $LOG_DIR"

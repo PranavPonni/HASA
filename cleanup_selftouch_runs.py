@@ -22,7 +22,7 @@ VARIANTS = [
     "selftouch_fcn_posveltrq",
     "selftouch_fcn_postrqcmd",
     "selftouch_fcn_poscmdvel",
-    "selftouch_fcn_posveltrqcmd"
+    "selftouch_fcn_posveltrqcmd",
     "selftouch_fcn_postrqcmd_tplus10",
     "selftouch_fcn_postrqcmd_tplus5",
     "selftouch_fcn_postrqcmd_tplus2",
@@ -130,16 +130,13 @@ def cleanup_logs(root, dry_run=False):
 
 
 def delete_wandb_project(api, entity, project):
-    from wandb_gql import gql
-
     project_obj = api.project(project, entity=entity)
     if hasattr(project_obj, "_load") and not project_obj._attrs.get("id"):
         project_obj._load()
     project_id = project_obj._attrs.get("id")
     if not project_id:
         raise RuntimeError(f"Could not resolve W&B project id for {entity}/{project}")
-    mutation = gql(
-        """
+    mutation = """
         mutation deleteProject($id: String!) {
           deleteModel(input: {id: $id}) {
             success
@@ -147,8 +144,18 @@ def delete_wandb_project(api, entity, project):
           }
         }
         """
-    )
-    result = api.client.execute(mutation, variable_values={"id": project_id})
+    variables = {"id": project_id}
+    service_api = getattr(api, "_service_api", None)
+    if service_api is not None and hasattr(service_api, "execute_graphql"):
+        # W&B >= 0.28 accepts raw GraphQL strings through its service API and
+        # no longer ships the old standalone wandb_gql parser.
+        result = service_api.execute_graphql(mutation, variables=variables)
+    else:
+        # Compatibility with older W&B clients whose RetryingClient expects a
+        # parsed GraphQL document.
+        from wandb_gql import gql
+
+        result = api.client.execute(gql(mutation), variable_values=variables)
     success = result.get("deleteModel", {}).get("success")
     if not success:
         raise RuntimeError(f"W&B project delete failed for {entity}/{project}: {result}")
@@ -160,6 +167,7 @@ def cleanup_wandb_online(entity, delete_projects=False, delete_artifacts=False, 
     api = wandb.Api()
     deleted_runs = 0
     deleted_projects = 0
+    failures = []
     for project in VARIANTS:
         path = f"{entity}/{project}"
         if delete_projects:
@@ -168,7 +176,8 @@ def cleanup_wandb_online(entity, delete_projects=False, delete_artifacts=False, 
                 try:
                     delete_wandb_project(api, entity, project)
                 except Exception as exc:
-                    print(f"  skipped {path}: {exc}", file=sys.stderr)
+                    failures.append((path, str(exc)))
+                    print(f"  FAILED {path}: {exc}", file=sys.stderr)
                     continue
             deleted_projects += 1
             continue
@@ -177,6 +186,7 @@ def cleanup_wandb_online(entity, delete_projects=False, delete_artifacts=False, 
         try:
             runs = list(api.runs(path))
         except Exception as exc:
+            failures.append((path, str(exc)))
             print(f"  skipped {path}: {exc}", file=sys.stderr)
             continue
         for run in runs:
@@ -184,14 +194,14 @@ def cleanup_wandb_online(entity, delete_projects=False, delete_artifacts=False, 
             if not dry_run:
                 run.delete(delete_artifacts=delete_artifacts)
             deleted_runs += 1
-    return deleted_runs, deleted_projects
+    return deleted_runs, deleted_projects, failures
 
 
 def main():
     parser = argparse.ArgumentParser(description="Delete local and optional W&B selftouch FCN run artifacts.")
     parser.add_argument("--root", default=".", help="motionlearning repo root")
     parser.add_argument("--wandb", action="store_true", help="also delete online W&B runs/projects")
-    parser.add_argument("--delete-projects", action="store_true", help="with --wandb, delete the 14 W&B projects themselves")
+    parser.add_argument("--delete-projects", action="store_true", help="with --wandb, delete the configured W&B projects themselves")
     parser.add_argument("--delete-artifacts", action="store_true", help="with --wandb run deletion, also delete run artifacts")
     parser.add_argument("--entity", default=None, help="W&B entity; defaults to parameter_base.yaml or WANDB_ENTITY")
     parser.add_argument("--dry-run", action="store_true", help="print what would be deleted")
@@ -212,13 +222,16 @@ def main():
     if args.wandb:
         if not entity:
             raise SystemExit("W&B entity not found; pass --entity.")
-        runs, projects = cleanup_wandb_online(
+        runs, projects, failures = cleanup_wandb_online(
             entity,
             delete_projects=args.delete_projects,
             delete_artifacts=args.delete_artifacts,
             dry_run=args.dry_run,
         )
         print(f"wandb_deleted_runs={runs} wandb_deleted_projects={projects}")
+        if failures:
+            print(f"wandb_failures={len(failures)}", file=sys.stderr)
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":

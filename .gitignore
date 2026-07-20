@@ -28,9 +28,13 @@ wandb/
 wandb/**/*.log
 log/
 logs/
-parameter/*/*/
-!parameter/*/parameter_base/
-!parameter/*/parameter_base/parameter_base.yaml
+parameter/
+
+# Model-specific controller and data loader files
+model/*/controller.py
+model/*/test_controller.py
+model/*/data_loader.py
+
 .log
 
 # Local editor/system files

@@ -24,17 +24,63 @@ import torchvision
 import argparse
 import importlib
 import copy
+import itertools
+import random
+import re
 import util
 import data_preproc as dp
 import wandb
 import pdb
-from training_speed_utils import get_wandb_entity, wandb_service_settings
+from training_speed_utils import configure_reproducibility, get_wandb_entity, wandb_service_settings
 from selftouch_offset_utils import input_offset_from_params
 
 
 class MainExectutor:
-    def __init__(self, mode, param_file, config, sweep_count=None):
+    def __init__(
+        self,
+        mode,
+        param_file,
+        config,
+        sweep_count=None,
+        seed=None,
+        run_name=None,
+        tactile_history=None,
+    ):
         params = dp.read_yaml(param_file)
+
+        train_params = params.setdefault("Train", {})
+        if seed is None:
+            seed = os.environ.get("SELFTOUCH_SEED", train_params.get("seed", 0))
+        seed = int(seed)
+        deterministic = str(
+            os.environ.get("SELFTOUCH_DETERMINISTIC", train_params.get("deterministic", True))
+        ).strip().lower() not in {"0", "false", "no", "off"}
+        configure_reproducibility(seed, deterministic=deterministic)
+        train_params["seed"] = seed
+        train_params["deterministic"] = deterministic
+
+        run_name = run_name or os.environ.get("SELFTOUCH_RUN_NAME")
+        if run_name:
+            run_name = str(run_name).strip()
+            if not re.fullmatch(r"[A-Za-z0-9_.-]+", run_name):
+                raise ValueError(
+                    "run_name may contain only letters, digits, dot, underscore, and hyphen"
+                )
+            train_params["run_name"] = run_name
+
+        if tactile_history is None:
+            tactile_history = os.environ.get("SELFTOUCH_USE_TACTILE_HISTORY")
+        if tactile_history is not None:
+            if isinstance(tactile_history, str):
+                tactile_history = tactile_history.strip().lower() in {"1", "true", "yes", "on"}
+            params.setdefault("Model", {})["use_tactile_history"] = bool(tactile_history)
+
+        params["Experiment"] = {
+            "seed": seed,
+            "deterministic": deterministic,
+            "run_name": run_name or "",
+            "use_tactile_history": bool(params.get("Model", {}).get("use_tactile_history", False)),
+        }
         
         # params["Model"]["model_name"]=os.path.basename(os.path.dirname(params["Train"]["model_save_path"]))
 
@@ -43,15 +89,29 @@ class MainExectutor:
         self.dataset_param = params["Dataset"]
         self.required_param = params["Required"]
         self.sync_input_offset(params)
-        self.model_param["model_save_path"]=self.get_model_save_path(param_file)
-        self.model_param["model_name"]=os.path.basename(os.path.dirname(self.model_param["model_save_path"]))
-        self.dataset_param["param_file_dir"]=os.path.dirname(param_file)
+        base_model_save_path = self.get_model_save_path(param_file)
+        self.model_param["model_name"] = os.path.basename(os.path.dirname(base_model_save_path))
+        if run_name:
+            self.model_param["model_save_path"] = os.path.join(
+                os.path.dirname(base_model_save_path), run_name
+            )
+            self.dataset_param["param_file_dir"] = os.path.join(
+                os.path.dirname(os.path.dirname(param_file)), run_name
+            )
+            os.makedirs(self.dataset_param["param_file_dir"], exist_ok=True)
+            dp.write_yaml(
+                params,
+                os.path.join(self.dataset_param["param_file_dir"], "parameter.yaml"),
+            )
+        else:
+            self.model_param["model_save_path"] = base_model_save_path
+            self.dataset_param["param_file_dir"] = os.path.dirname(param_file)
+        print(f"[path] Dataset.data_dir={self.dataset_param.get('data_dir')}")
         self._base_params = copy.deepcopy(params)
         self._base_model_param = copy.deepcopy(self.model_param)
         self._base_dataset_param = copy.deepcopy(self.dataset_param)
         self._base_required_param = copy.deepcopy(self.required_param)
         if mode == "train":
-            self.model_param["model_save_path"]=self.get_model_save_path(param_file)
             self.train(params["Train"])
         elif mode == "test":
             self.test(params["Test"])
@@ -62,9 +122,9 @@ class MainExectutor:
         elif mode == "sweep":
             self.param_file=param_file
             self.params=params
-            self.sweep_run_config = self.get_fixed_sweep_run_config(params)
-            if self.sweep_run_config is not None and not bool(params["Sweep"].get("use_wandb_sweep_api", False)):
-                self.run_fixed_sweep_loop(sweep_count)
+            if not bool(params["Sweep"].get("use_wandb_sweep_api", False)):
+                self.sweep_run_configs = self.get_local_sweep_run_configs(params)
+                self.run_local_sweep_loop(sweep_count)
                 return
 
             sweep_id=self.get_sweep_config(params)
@@ -142,15 +202,24 @@ class MainExectutor:
         self.required_param = copy.deepcopy(self._base_required_param)
         self.sweep_run_config = self.get_fixed_sweep_run_config(self.params)
 
-    def run_fixed_sweep_loop(self, sweep_count=None):
+    def run_local_sweep_loop(self, sweep_count=None):
+        configs = getattr(self, "sweep_run_configs", None) or [{}]
+        if not configs:
+            configs = [{}]
+
         if sweep_count is None:
-            print("[sweep] Fixed one-combination sweep detected; running online W&B runs continuously. Stop with Ctrl+C.")
+            print(
+                f"[sweep] Running {len(configs)} local sweep config(s) continuously. "
+                "Stop with Ctrl+C."
+            )
             run_index = 0
             try:
                 while True:
+                    config_index = run_index % len(configs)
                     run_index += 1
                     self.reset_sweep_state()
-                    print(f"[sweep] Starting fixed sweep run {run_index}")
+                    self.sweep_run_config = configs[config_index]
+                    print(f"[sweep] Starting local sweep run {run_index} config {config_index + 1}/{len(configs)}")
                     completed = self.sweep()
                     if not completed and getattr(self, "_sweep_interrupted", False):
                         break
@@ -159,10 +228,15 @@ class MainExectutor:
             return
 
         sweep_count = int(sweep_count)
-        print(f"[sweep] Fixed one-combination sweep detected; running {sweep_count} online W&B run(s).")
+        print(f"[sweep] Running {sweep_count} local W&B run(s) from {len(configs)} config(s).")
         for run_index in range(1, sweep_count + 1):
+            config_index = (run_index - 1) % len(configs)
             self.reset_sweep_state()
-            print(f"[sweep] Starting fixed sweep run {run_index}/{sweep_count}")
+            self.sweep_run_config = configs[config_index]
+            print(
+                f"[sweep] Starting local sweep run {run_index}/{sweep_count} "
+                f"config {config_index + 1}/{len(configs)}"
+            )
             completed = self.sweep()
             if not completed and getattr(self, "_sweep_interrupted", False):
                 break
@@ -229,6 +303,34 @@ class MainExectutor:
                 return None
         return fixed if fixed else None
 
+    def get_local_sweep_run_configs(self, params):
+        sweep = params.get("Sweep")
+        if not isinstance(sweep, dict):
+            return [{}]
+        tune = sweep.get("tune")
+        if not isinstance(tune, dict):
+            return [{}]
+        parameters = util.get_penultimate_dict(tune)
+        names = []
+        value_sets = []
+        for key, spec in parameters.items():
+            if isinstance(spec, dict) and "values" in spec:
+                values = spec.get("values")
+                if not isinstance(values, (list, tuple)) or not values:
+                    raise ValueError(f"Sweep parameter '{key}' has no values")
+                names.append(key)
+                value_sets.append(list(values))
+            elif isinstance(spec, dict) and "value" in spec:
+                names.append(key)
+                value_sets.append([spec["value"]])
+            else:
+                raise ValueError(f"Invalid sweep parameter spec for '{key}': {spec}")
+
+        configs = [dict(zip(names, values)) for values in itertools.product(*value_sets)]
+        if str(sweep.get("method", "")).lower() == "random":
+            random.shuffle(configs)
+        return configs or [{}]
+
     def sweep_config_saver(self,run):
         config = getattr(self, "sweep_run_config", None) or run.config
         self.model_param["model_save_path"]=os.path.join(os.path.dirname(self.model_param["model_save_path"]),run.name)
@@ -236,6 +338,10 @@ class MainExectutor:
         self.model_param=util.update_nested_dict(self.model_param,config)
         self.dataset_param=util.update_nested_dict(self.dataset_param,config)
         self.params=util.update_nested_dict(self.params,config)
+        self.model_param = dp.localize_legacy_paths(self.model_param)
+        self.dataset_param = dp.localize_legacy_paths(self.dataset_param)
+        self.params = dp.localize_legacy_paths(self.params)
+        print(f"[path] Sweep Dataset.data_dir={self.dataset_param.get('data_dir')}")
         os.makedirs(self.dataset_param["param_file_dir"], exist_ok=True)
         dp.write_yaml(self.params,os.path.join(self.dataset_param["param_file_dir"],"parameter.yaml"))
         if "pretrain" in self.config:
@@ -257,9 +363,26 @@ def main():
     parser.add_argument('-param_file', '-param', dest='param_file', help='path to the parameter file')
     parser.add_argument('-config', nargs='+',default=["train"], help='add some description when you want to add config')
     parser.add_argument('-sweep_count', type=int, default=None, help='number of sweep agent runs; omit to run until stopped with Ctrl+C')
+    parser.add_argument('-seed', '--seed', type=int, default=None, help='fixed random seed for Python, NumPy, and PyTorch')
+    parser.add_argument('-run_name', '--run-name', default=None, help='unique output directory name under model_weight/<variant>')
+    parser.add_argument(
+        '-tactile_history', '--tactile-history',
+        choices=['on', 'off'],
+        default=None,
+        help='override Model.use_tactile_history for the proprioception-only control',
+    )
     args = parser.parse_args()
-    
-    controller = MainExectutor(args.mode, args.param_file,args.config, sweep_count=args.sweep_count)
+
+    tactile_history = None if args.tactile_history is None else args.tactile_history == 'on'
+    controller = MainExectutor(
+        args.mode,
+        args.param_file,
+        args.config,
+        sweep_count=args.sweep_count,
+        seed=args.seed,
+        run_name=args.run_name,
+        tactile_history=tactile_history,
+    )
 
 if __name__ == "__main__":
     main()

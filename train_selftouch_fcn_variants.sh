@@ -3,7 +3,7 @@ set -uo pipefail
 
 LOG_DIR="${LOG_DIR:-logs/selftouch_fcn_variants}"
 SWEEP_COUNT="${SWEEP_COUNT:-1}"
-MAX_PARALLEL_JOBS="${MAX_PARALLEL_JOBS:-6}"
+MAX_PARALLEL_JOBS="${MAX_PARALLEL_JOBS:-1}"
 
 if ! [[ "$MAX_PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [ "$MAX_PARALLEL_JOBS" -lt 1 ]; then
   echo "MAX_PARALLEL_JOBS must be a positive integer; got '${MAX_PARALLEL_JOBS}'" >&2
@@ -23,8 +23,17 @@ export NUMEXPR_NUM_THREADS="${NUMEXPR_NUM_THREADS:-1}"
 export TORCH_NUM_THREADS="${TORCH_NUM_THREADS:-1}"
 export SELFTOUCH_TORCH_THREADS="${SELFTOUCH_TORCH_THREADS:-1}"
 export SELFTOUCH_TRAIN_MICRO_BATCH_SIZE="${SELFTOUCH_TRAIN_MICRO_BATCH_SIZE:-1}"
-export SELFTOUCH_EVAL_BATCH_SIZE="${SELFTOUCH_EVAL_BATCH_SIZE:-8}"
-export SELFTOUCH_CUDA_MEMORY_FRACTION="${SELFTOUCH_CUDA_MEMORY_FRACTION:-0.10}"
+export SELFTOUCH_EVAL_BATCH_SIZE="${SELFTOUCH_EVAL_BATCH_SIZE:-2}"
+export SELFTOUCH_EVAL_MICRO_BATCH_SIZE="${SELFTOUCH_EVAL_MICRO_BATCH_SIZE:-2}"
+if [ -z "${SELFTOUCH_CUDA_MEMORY_FRACTION:-}" ]; then
+  case "$MAX_PARALLEL_JOBS" in
+    1) SELFTOUCH_CUDA_MEMORY_FRACTION=0.80 ;;
+    2) SELFTOUCH_CUDA_MEMORY_FRACTION=0.40 ;;
+    3) SELFTOUCH_CUDA_MEMORY_FRACTION=0.27 ;;
+    *) SELFTOUCH_CUDA_MEMORY_FRACTION=0.20 ;;
+  esac
+fi
+export SELFTOUCH_CUDA_MEMORY_FRACTION
 export SELFTOUCH_TRAIN_STEP_SLEEP="${SELFTOUCH_TRAIN_STEP_SLEEP:-0}"
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
@@ -52,7 +61,7 @@ running=0
 
 echo "Running ${#variants[@]} selftouch FCN variants with MAX_PARALLEL_JOBS=${MAX_PARALLEL_JOBS}"
 echo "Low-VRAM defaults: micro-batch=${SELFTOUCH_TRAIN_MICRO_BATCH_SIZE}, eval_batch=${SELFTOUCH_EVAL_BATCH_SIZE}, cuda_fraction=${SELFTOUCH_CUDA_MEMORY_FRACTION}"
-echo "Default is 6 parallel jobs on low micro-batches; lower MAX_PARALLEL_JOBS if RAM or desktop responsiveness suffers."
+echo "The launcher keeps up to ${MAX_PARALLEL_JOBS} model jobs active at once."
 
 for variant in "${variants[@]}"; do
   while [ "$running" -ge "$MAX_PARALLEL_JOBS" ]; do

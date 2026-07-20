@@ -18,6 +18,10 @@ class SelfTouch(nn.Module):
         super().__init__()
         self.hand_dim = int(param["hand_dim"])
         self.tactile_dim = int(param["tactile_dim"])
+        self.output_min = float(param.get("output_min", 0.1))
+        self.output_max = float(param.get("output_max", 0.9))
+        if not self.output_min < self.output_max:
+            raise ValueError("output_min must be smaller than output_max")
         self.use_joint_pos_only = bool(param.get("use_joint_pos_only", True))
         self.use_derived_features = bool(param.get("use_derived_features", False))
         self.temporal_window_steps = max(1, int(param.get("temporal_window_steps", 1)))
@@ -57,7 +61,12 @@ class SelfTouch(nn.Module):
         return
 
     def _activate_output(self, x):
-        return x
+        return self.output_min + (self.output_max - self.output_min) * torch.sigmoid(x)
+
+    def output_bias_from_normalized_target(self, target):
+        unit = (target - self.output_min) / (self.output_max - self.output_min)
+        eps = torch.finfo(target.dtype).eps
+        return torch.logit(unit.clamp(min=eps, max=1.0 - eps))
 
     def forward(
         self,
