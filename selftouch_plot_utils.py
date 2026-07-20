@@ -8,6 +8,9 @@ import numpy as np
 from data_preproc import unscale_data
 
 
+os.environ.setdefault("MPLCONFIGDIR", f"/tmp/hasa-matplotlib-{os.getuid()}")
+
+
 FINGER_ORDER = ("index", "thumb", "middle", "ring")
 FINGER_TO_KEY = {
     "index": "tactile_index_tip",

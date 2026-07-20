@@ -128,6 +128,10 @@ The pipeline usually does:
 
 ## 6) Standard run commands
 
+For the controlled 14-variant, fixed-seed FCN input ablation, use the dedicated
+workflow in `SCIENTIFIC_FCN_ABLATION.md`; do not use the hyperparameter-sweep
+launcher for that experiment.
+
 From repository root:
 
 ### Train
