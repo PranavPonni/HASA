@@ -5,9 +5,14 @@ def configure_reproducibility(seed, deterministic=True):
     """Seed every RNG used by the training pipeline.
 
     This is intentionally called before dataset construction and model
-    initialization.  Deterministic algorithms are requested in warning mode so
-    an unsupported CUDA kernel is reported without killing a long experiment.
+    initialization.  Deterministic algorithms are enforced so an unsupported
+    CUDA kernel fails loudly instead of silently weakening reproducibility.
     """
+    deterministic = bool(deterministic)
+    if deterministic:
+        # Must be set before the first CUDA BLAS context is created.
+        os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+
     import random
 
     import numpy as np
@@ -21,14 +26,12 @@ def configure_reproducibility(seed, deterministic=True):
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
 
-    deterministic = bool(deterministic)
     if hasattr(torch.backends, "cudnn"):
         torch.backends.cudnn.deterministic = deterministic
         torch.backends.cudnn.benchmark = not deterministic
     if deterministic:
-        os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
         try:
-            torch.use_deterministic_algorithms(True, warn_only=True)
+            torch.use_deterministic_algorithms(True)
         except (AttributeError, TypeError):
             pass
     print(f"[repro] seed={seed} | deterministic={deterministic}")
@@ -339,14 +342,19 @@ def selftouch_loss_step(
     micro_size = micro_batch_size(mode_param, mode, batch_count)
 
     if is_train and optimizer is not None:
-        base_lr = float((mode_param or {}).get("lr", optimizer.param_groups[0]["lr"]))
-        apply_lr_schedule(
-            optimizer,
-            base_lr,
-            epoch=0,
-            mode_param=mode_param,
-            optimizer_step=int(getattr(optimizer, "_selftouch_optimizer_step", 0)),
-        )
+        schedule = (mode_param or {}).get("lr_schedule") or {}
+        schedule_unit = str(schedule.get("unit", "epoch")).strip().lower()
+        if schedule_unit in {
+            "optimizer_step", "optimizer_steps", "step", "steps", "update", "updates"
+        }:
+            base_lr = float((mode_param or {}).get("lr", optimizer.param_groups[0]["lr"]))
+            apply_lr_schedule(
+                optimizer,
+                base_lr,
+                epoch=0,
+                mode_param=mode_param,
+                optimizer_step=int(getattr(optimizer, "_selftouch_optimizer_step", 0)),
+            )
         optimizer.zero_grad(set_to_none=True)
 
     if micro_size <= 0 or micro_size >= batch_count:
