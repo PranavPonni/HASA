@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-LOG_DIR="${LOG_DIR:-logs/selftouch_fcn_variants}"
+LOG_DIR="${LOG_DIR:-logs/selftouch_fcn_pos_offsets}"
 SWEEP_COUNT="${SWEEP_COUNT:-11}"
 MAX_PARALLEL_JOBS="${MAX_PARALLEL_JOBS:-3}"
 
@@ -9,6 +9,7 @@ if ! [[ "$MAX_PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [ "$MAX_PARALLEL_JOBS" -lt 1 ]; t
   echo "MAX_PARALLEL_JOBS must be a positive integer; got '${MAX_PARALLEL_JOBS}'" >&2
   exit 2
 fi
+
 export WANDB_INIT_TIMEOUT="${WANDB_INIT_TIMEOUT:-300}"
 export WANDB_HTTP_TIMEOUT="${WANDB_HTTP_TIMEOUT:-120}"
 export WANDB__SERVICE_WAIT="${WANDB__SERVICE_WAIT:-300}"
@@ -29,20 +30,12 @@ export SELFTOUCH_TRAIN_STEP_SLEEP="${SELFTOUCH_TRAIN_STEP_SLEEP:-0}"
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
 variants=(
-  selftouch_fcn_pos
-  selftouch_fcn_vel
-  selftouch_fcn_trq
-  selftouch_fcn_cmd
-  selftouch_fcn_posvel
-  selftouch_fcn_postrq
-  selftouch_fcn_poscmd
-  selftouch_fcn_velcmd
-  selftouch_fcn_veltrq
-  selftouch_fcn_trqcmd
-  selftouch_fcn_posveltrq
-  selftouch_fcn_postrqcmd
-  selftouch_fcn_poscmdvel
-  selftouch_fcn_posveltrqcmd
+  selftouch_fcn_pos_tplus2
+  selftouch_fcn_pos_tplus5
+  selftouch_fcn_pos_tplus10
+  selftouch_fcn_pos_tminus2
+  selftouch_fcn_pos_tminus5
+  selftouch_fcn_pos_tminus10
 )
 
 mkdir -p "$LOG_DIR"
@@ -50,7 +43,7 @@ mkdir -p "$LOG_DIR"
 status=0
 running=0
 
-echo "Running ${#variants[@]} selftouch FCN variants with MAX_PARALLEL_JOBS=${MAX_PARALLEL_JOBS}"
+echo "Running ${#variants[@]} selftouch FCN position-offset variants with MAX_PARALLEL_JOBS=${MAX_PARALLEL_JOBS}"
 echo "SWEEP_COUNT=${SWEEP_COUNT}; each job uses parameter/<variant>/parameter_base/parameter_base.yaml"
 echo "GPU defaults: micro-batch=${SELFTOUCH_TRAIN_MICRO_BATCH_SIZE}, eval_batch=${SELFTOUCH_EVAL_BATCH_SIZE}, eval_micro_batch=${SELFTOUCH_EVAL_MICRO_BATCH_SIZE}, cuda_fraction=${SELFTOUCH_CUDA_MEMORY_FRACTION}, step_sleep=${SELFTOUCH_TRAIN_STEP_SLEEP}s"
 

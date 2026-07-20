@@ -175,6 +175,13 @@ def prediction_accuracy(raw: np.ndarray, pred: np.ndarray, *, scale: Optional[fl
     return float(np.clip(100.0 * (1.0 - mae / denom), 0.0, 100.0))
 
 
+def mae_percent(raw_mae: float, *, scale: Optional[float]) -> float:
+    """Raw MAE as a percentage of the raw tactile signal spread."""
+    denom = float(scale) if scale is not None else 0.0
+    denom = max(denom, 1e-8)
+    return float(100.0 * float(raw_mae) / denom)
+
+
 def taxel_mean_trace(arr: np.ndarray) -> np.ndarray:
     """Average every taxel in the tactile array into one trace per timestep."""
     arr = np.asarray(arr, dtype=np.float32)
@@ -488,6 +495,9 @@ def _raw_metric_fieldnames(finger_names: Sequence[str]) -> List[str]:
         "seed",
         "use_tactile_history",
         "prediction_mae",
+        "prediction_raw_mae",
+        "prediction_mae_percent",
+        "prediction_raw_mae_percent",
         "prediction_accuracy",
         "prediction_profile_accuracy",
         "prediction_raw_accuracy",
@@ -507,6 +517,9 @@ def _raw_metric_fieldnames(finger_names: Sequence[str]) -> List[str]:
     for name in finger_names:
         fieldnames.extend([
             f"{name}_mae",
+            f"{name}_raw_mae",
+            f"{name}_mae_percent",
+            f"{name}_raw_mae_percent",
             f"{name}_accuracy",
             f"{name}_profile_accuracy",
             f"{name}_raw_accuracy",
@@ -559,6 +572,11 @@ def _append_raw_metric_history(plot_dir: str, epoch: int, metrics: Mapping[str, 
             "seed": int(metrics.get("seed", 0)),
             "use_tactile_history": int(bool(metrics.get("use_tactile_history", False))),
             "prediction_mae": float(metrics.get("tactile_line_mae", 0.0)),
+            "prediction_raw_mae": float(metrics.get("tactile_line_raw_mae", metrics.get("tactile_line_mae", 0.0))),
+            "prediction_mae_percent": float(metrics.get("tactile_line_mae_percent", 0.0)),
+            "prediction_raw_mae_percent": float(
+                metrics.get("tactile_line_raw_mae_percent", metrics.get("tactile_line_mae_percent", 0.0))
+            ),
             "prediction_accuracy": float(metrics.get("tactile_line_raw_accuracy", 0.0)),
             "prediction_profile_accuracy": float(metrics.get("tactile_line_profile_accuracy", 0.0)),
             "prediction_raw_accuracy": float(metrics.get("tactile_line_raw_accuracy", 0.0)),
@@ -581,6 +599,11 @@ def _append_raw_metric_history(plot_dir: str, epoch: int, metrics: Mapping[str, 
         }
         for name in finger_names:
             row[f"{name}_mae"] = float(metrics.get(f"{name}_mae", 0.0))
+            row[f"{name}_raw_mae"] = float(metrics.get(f"{name}_raw_mae", metrics.get(f"{name}_mae", 0.0)))
+            row[f"{name}_mae_percent"] = float(metrics.get(f"{name}_mae_percent", 0.0))
+            row[f"{name}_raw_mae_percent"] = float(
+                metrics.get(f"{name}_raw_mae_percent", metrics.get(f"{name}_mae_percent", 0.0))
+            )
             row[f"{name}_accuracy"] = float(
                 metrics.get(f"{name}_raw_accuracy", metrics.get(f"{name}_accuracy", 0.0))
             )
@@ -1084,6 +1107,7 @@ def plot_tactile_temporal_profiles(
             profile["pred_cmp"],
             scale=shared_raw_accuracy_scale,
         )
+        profile["mae_percent"] = mae_percent(profile["mae"], scale=shared_raw_accuracy_scale)
         profile["uncalibrated_raw_accuracy"] = prediction_accuracy(
             profile["raw_cmp"],
             profile["pred_uncalibrated_cmp"],
@@ -1135,6 +1159,7 @@ def plot_tactile_temporal_profiles(
             title_name = name.capitalize()
             ax.set_title(
                 f"{title_name} mean trace | taxel MAE={profile['mae']:.1f} "
+                f"({profile['mae_percent']:.1f}%) "
                 f"| corr={profile['corr']:.3f} | R²={profile['r2']:.3f} "
                 f"| trace MAE={profile['profile_mae']:.1f}",
                 fontsize=9,
@@ -1178,6 +1203,9 @@ def plot_tactile_temporal_profiles(
                     float(err_value),
                 ])
             metrics[f"{name}_mae"] = profile["mae"]
+            metrics[f"{name}_raw_mae"] = profile["mae"]
+            metrics[f"{name}_mae_percent"] = profile["mae_percent"]
+            metrics[f"{name}_raw_mae_percent"] = profile["mae_percent"]
             metrics[f"{name}_profile_mae"] = profile["profile_mae"]
             metrics[f"{name}_display_profile_mae"] = profile["display_profile_mae"]
             metrics[f"{name}_start_aligned_profile_mae"] = profile["start_aligned_profile_mae"]
@@ -1242,7 +1270,7 @@ def plot_tactile_temporal_profiles(
         ax.set_ylabel("predicted tactile")
         ax.set_title(
             f"{profile['name'].capitalize()} | corr={profile['corr']:.3f} | R²={profile['r2']:.3f}\n"
-            f"MAE={profile['mae']:.1f} | p95={profile['error_p95']:.1f}",
+            f"raw MAE={profile['mae']:.1f} ({profile['mae_percent']:.1f}%) | p95={profile['error_p95']:.1f}",
             fontsize=9,
         )
         ax.grid(True, alpha=0.2)
@@ -1322,7 +1350,7 @@ def plot_tactile_temporal_profiles(
         ax.set_ylabel("taxel")
         ax.set_title(
             f"{profile['name'].capitalize()} taxel error | raw_acc={profile['accuracy']:.1f}% | "
-            f"MAE={profile['mae']:.1f} | p95={profile['error_p95']:.1f}",
+            f"raw MAE={profile['mae']:.1f} ({profile['mae_percent']:.1f}%) | p95={profile['error_p95']:.1f}",
             fontsize=9,
         )
         ax.grid(False)
@@ -1342,6 +1370,9 @@ def plot_tactile_temporal_profiles(
     if not metric_profiles:
         metric_profiles = [p for p in profiles if p["active"]] or profiles
     metrics["tactile_line_mae"] = float(np.mean([p["mae"] for p in metric_profiles]))
+    metrics["tactile_line_raw_mae"] = metrics["tactile_line_mae"]
+    metrics["tactile_line_mae_percent"] = float(np.mean([p["mae_percent"] for p in metric_profiles]))
+    metrics["tactile_line_raw_mae_percent"] = metrics["tactile_line_mae_percent"]
     metrics["tactile_line_profile_mae"] = float(np.mean([p["profile_mae"] for p in metric_profiles]))
     metrics["tactile_line_display_profile_mae"] = float(np.mean([p["display_profile_mae"] for p in metric_profiles]))
     metrics["tactile_line_start_aligned_profile_mae"] = float(
