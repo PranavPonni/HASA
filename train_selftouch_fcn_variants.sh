@@ -2,6 +2,7 @@
 set -uo pipefail
 
 LOG_DIR="${LOG_DIR:-logs/selftouch_fcn_variants}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 SWEEP_COUNT="${SWEEP_COUNT:-11}"
 MAX_PARALLEL_JOBS="${MAX_PARALLEL_JOBS:-3}"
 
@@ -9,6 +10,15 @@ if ! [[ "$MAX_PARALLEL_JOBS" =~ ^[0-9]+$ ]] || [ "$MAX_PARALLEL_JOBS" -lt 1 ]; t
   echo "MAX_PARALLEL_JOBS must be a positive integer; got '${MAX_PARALLEL_JOBS}'" >&2
   exit 2
 fi
+if ! [[ "$SWEEP_COUNT" =~ ^[0-9]+$ ]]; then
+  echo "SWEEP_COUNT must be a non-negative integer; got '${SWEEP_COUNT}'" >&2
+  exit 2
+fi
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+  echo "Python executable not found: $PYTHON_BIN" >&2
+  exit 2
+fi
+
 export WANDB_INIT_TIMEOUT="${WANDB_INIT_TIMEOUT:-300}"
 export WANDB_HTTP_TIMEOUT="${WANDB_HTTP_TIMEOUT:-120}"
 export WANDB__SERVICE_WAIT="${WANDB__SERVICE_WAIT:-300}"
@@ -82,7 +92,7 @@ for variant in "${variants[@]}"; do
   (
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] START ${variant}"
     echo "SWEEP_COUNT=${SWEEP_COUNT:-continuous} MAX_PARALLEL_JOBS=${MAX_PARALLEL_JOBS} PARAM_FILE=${param_file}"
-    python3 main.py \
+    "$PYTHON_BIN" main.py \
       -mode sweep \
       -param_file "$param_file" \
       -config train \
