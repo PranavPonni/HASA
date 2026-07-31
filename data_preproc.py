@@ -118,11 +118,21 @@ def _episode_group_key(name):
     return match.group(1), int(match.group(2))
 
 
+def _resolve_episode_name_set(episode_names, value):
+    if value is None:
+        return set()
+    if isinstance(value, str):
+        if value.strip().lower() == "all":
+            return set(episode_names)
+        return {value}
+    return set(value)
+
+
 def resolve_test_episode_names(episode_names, dataset_param, key="test_data"):
     """Resolve explicit or policy-driven test episode names."""
     policy = dataset_param.get("test_split_policy")
     if not policy:
-        return set(dataset_param.get(key, []))
+        return _resolve_episode_name_set(episode_names, dataset_param.get(key))
 
     grouped = {}
     for name in sorted(episode_names):
@@ -730,6 +740,25 @@ def split_train_test(dir_data,dataset_param,key="test_data"):
     train_dir_data={}
     test_dir_data={}
     test_names = resolve_test_episode_names(dir_data.keys(), dataset_param, key)
+    train_names = dataset_param.get("train_data")
+    if train_names is not None:
+        train_names = _resolve_episode_name_set(dir_data.keys(), train_names)
+        if not test_names:
+            test_names = set(train_names)
+
+        missing_train = sorted(train_names - set(dir_data.keys()))
+        if missing_train:
+            raise ValueError(
+                "Dataset.train_data contains episodes not found in data_dir: "
+                + ", ".join(missing_train[:10])
+            )
+
+        for file_name,data in dir_data.items():
+            if file_name in train_names:
+                train_dir_data[file_name]=data
+            if file_name in test_names:
+                test_dir_data[file_name]=data
+        return train_dir_data,test_dir_data
 
     for file_name,data in dir_data.items():
         if file_name in test_names:

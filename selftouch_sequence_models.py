@@ -824,6 +824,52 @@ class SelfTouchSequenceModel(nn.Module):
             labels = F.pad(labels, (0, batch - labels.shape[0]))
         return labels[:batch].clamp(min=0, max=len(self.combo_decoders) - 1)
 
+    def _combo_weights(self, selftouch_combo, batch, timesteps, device, dtype):
+        combo_count = len(self.combo_decoders)
+        if selftouch_combo is None:
+            weights = torch.zeros(batch, timesteps, combo_count, device=device, dtype=dtype)
+            weights[:, :, 0] = 1.0
+            return weights
+
+        if not torch.is_tensor(selftouch_combo):
+            selftouch_combo = torch.as_tensor(selftouch_combo)
+        weights = selftouch_combo.to(device=device, dtype=dtype)
+        if weights.ndim == 1:
+            weights = weights.view(1, 1, -1)
+        elif weights.ndim == 2:
+            weights = weights[:, None, :]
+        elif weights.ndim > 3:
+            weights = weights.reshape(weights.shape[0], -1, weights.shape[-1])
+
+        if weights.shape[0] == 1 and batch > 1:
+            weights = weights.expand(batch, -1, -1)
+        elif weights.shape[0] < batch:
+            pad = weights.new_zeros(batch - weights.shape[0], weights.shape[1], weights.shape[2])
+            weights = torch.cat([weights, pad], dim=0)
+        weights = weights[:batch]
+
+        if weights.shape[1] == 1:
+            weights = weights.expand(-1, timesteps, -1)
+        elif weights.shape[1] > timesteps:
+            weights = weights[:, -timesteps:, :]
+        elif weights.shape[1] < timesteps:
+            pad = weights[:, -1:, :].expand(-1, timesteps - weights.shape[1], -1)
+            weights = torch.cat([weights, pad], dim=1)
+
+        if weights.shape[-1] < combo_count:
+            pad = weights.new_zeros(*weights.shape[:-1], combo_count - weights.shape[-1])
+            weights = torch.cat([weights, pad], dim=-1)
+        elif weights.shape[-1] > combo_count:
+            weights = weights[..., :combo_count]
+
+        weights = weights.clamp_min(0.0)
+        empty = weights.sum(dim=-1, keepdim=True).le(0.0)
+        if bool(empty.any()):
+            default = weights.new_zeros(weights.shape)
+            default[..., 0] = 1.0
+            weights = torch.where(empty, default, weights)
+        return weights
+
     def _contrastive_pair_weights(self, labels):
         if labels is None or self.combo_contact_sets.numel() == 0:
             return None
@@ -842,16 +888,26 @@ class SelfTouchSequenceModel(nn.Module):
     def _predict_from_hidden(self, hidden, selftouch_combo=None):
         latent = self.decoder(hidden)
         batch, timesteps = latent.shape[:2]
-        labels = self._combo_labels(selftouch_combo, batch, latent.device)
+        combo_weights = self._combo_weights(
+            selftouch_combo,
+            batch,
+            timesteps,
+            latent.device,
+            latent.dtype,
+        )
         outputs = [
             latent.new_zeros(batch, timesteps, self.tactile_dim)
+            for _ in FINGER_NAMES
+        ]
+        normalizers = [
+            latent.new_zeros(batch, timesteps, 1)
             for _ in FINGER_NAMES
         ]
 
         for combo_idx, (decoder, fingers) in enumerate(
             zip(self.combo_decoders, self.combo_finger_order)
         ):
-            mask = labels.eq(combo_idx).to(dtype=latent.dtype).view(batch, 1, 1)
+            mask = combo_weights[..., combo_idx : combo_idx + 1]
             if not bool(mask.any()):
                 continue
             combo_pred = self._activate_output(decoder(latent)) * mask
@@ -862,8 +918,12 @@ class SelfTouchSequenceModel(nn.Module):
                     outputs[finger_idx]
                     + combo_pred[..., offset : offset + self.tactile_dim]
                 )
+                normalizers[finger_idx] = normalizers[finger_idx] + mask
                 offset += self.tactile_dim
-        return tuple(outputs)
+        return tuple(
+            output / normalizer.clamp_min(1.0)
+            for output, normalizer in zip(outputs, normalizers)
+        )
 
     def forward(
         self,

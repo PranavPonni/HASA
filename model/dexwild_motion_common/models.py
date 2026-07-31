@@ -279,8 +279,32 @@ class DexWildMotionModel(nn.Module):
         self.selftouch_feature_keys = tuple(
             param.get("selftouch_feature_keys", self.tactile_keys)
         )
+        teacher_loss_keys = param.get(
+            "selftouch_teacher_loss_keys",
+            self.selftouch_feature_keys,
+        )
+        if teacher_loss_keys is None:
+            teacher_loss_keys = ()
+        self.selftouch_teacher_loss_keys = tuple(
+            key
+            for key in teacher_loss_keys
+            if key in self.tactile_keys
+        )
+        self.selftouch_feature_scale = float(param.get("selftouch_feature_scale", 1.0))
         self.output_keys = self.tactile_keys + self.joint_state_keys
-        self.loss_names = ("total_loss",) + self.output_keys
+        self.temporal_delta_keys = tuple(
+            key
+            for key in param.get("temporal_delta_keys", [])
+            if key in self.output_keys
+        )
+        loss_names = (
+            ("total_loss",)
+            + self.output_keys
+            + tuple(f"{key}_delta" for key in self.temporal_delta_keys)
+        )
+        if self.use_selftouch and self.selftouch_teacher_loss_keys:
+            loss_names = loss_names + ("selftouch_teacher",)
+        self.loss_names = loss_names
 
         obs_dim = len(self.tactile_keys) * self.tactile_dim
         obs_dim += len(self.joint_state_keys) * self.hand_dim
@@ -361,6 +385,24 @@ class DexWildMotionModel(nn.Module):
                     streams[key] = self._as_sequence(value, reference)
         return streams
 
+    def _precomputed_selftouch_features(self, streams, reference):
+        features = {}
+        for key in self.selftouch_feature_keys:
+            value = streams.get(f"selftouch_feature_{key}")
+            if value is None:
+                return None
+            features[key] = self._as_sequence(value, reference)
+        return features
+
+    def _precomputed_selftouch_teacher_features(self, streams, reference):
+        features = {}
+        for key in self.selftouch_teacher_loss_keys:
+            value = streams.get(f"selftouch_teacher_feature_{key}")
+            if value is None:
+                return None
+            features[key] = self._as_sequence(value, reference)
+        return features
+
     def _selftouch_features(
         self,
         streams,
@@ -377,10 +419,13 @@ class DexWildMotionModel(nn.Module):
     ):
         if not self.use_selftouch:
             return None
+        hand_jnt_pos = self._stream_sequence(streams, "hand_jnt_pos")
+        precomputed = self._precomputed_selftouch_features(streams, hand_jnt_pos)
+        if precomputed is not None:
+            return precomputed
         if self.selftouch is None:
             raise RuntimeError("use_selftouch=True but no selftouch model was loaded")
 
-        hand_jnt_pos = self._stream_sequence(streams, "hand_jnt_pos")
         fallback_joint = hand_jnt_pos
         selftouch_hand_jnt_pos = self._as_sequence(selftouch_hand_jnt_pos, fallback_joint)
         selftouch_hand_jnt_vel = self._as_sequence(selftouch_hand_jnt_vel, fallback_joint)
@@ -456,6 +501,22 @@ class DexWildMotionModel(nn.Module):
                 features[key] = out[tuple_idx]
         return features
 
+    def _selftouch_teacher_features(self, streams, **selftouch_kwargs):
+        hand_jnt_pos = self._stream_sequence(streams, "hand_jnt_pos")
+        precomputed = self._precomputed_selftouch_teacher_features(
+            streams,
+            hand_jnt_pos,
+        )
+        if precomputed is not None:
+            return precomputed
+        raw_streams = {
+            key: value
+            for key, value in streams.items()
+            if not key.startswith("selftouch_feature_")
+            and not key.startswith("selftouch_teacher_feature_")
+        }
+        return self._selftouch_features(raw_streams, **selftouch_kwargs)
+
     def _slice_time(self, value, end):
         if torch.is_tensor(value) and value.dim() >= 3:
             return value[:, :end]
@@ -491,7 +552,10 @@ class DexWildMotionModel(nn.Module):
         if st_features is not None:
             target_len = parts[0].shape[1]
             for key in self.selftouch_feature_keys:
-                parts.append(_fit_timesteps(st_features[key], target_len))
+                parts.append(
+                    _fit_timesteps(st_features[key], target_len)
+                    * self.selftouch_feature_scale
+                )
         return torch.cat(parts, dim=-1)
 
     def _target_actions(self, streams):
@@ -515,6 +579,7 @@ class DexWildMotionModel(nn.Module):
         hand_jnt_vel=None,
         data_found=None,
         loss_coef=None,
+        compute_selftouch_teacher_loss=None,
         cls_rate=None,
         noise=None,
         selftouch_hand_jnt_pos=None,
@@ -577,6 +642,13 @@ class DexWildMotionModel(nn.Module):
 
         mask = data_found[:, 1:]
         loss_coef = loss_coef or {}
+        selftouch_teacher_coef = float(
+            loss_coef.get(
+                "selftouch_teacher",
+                self.param.get("selftouch_teacher_loss_coef", 0.0),
+            )
+            or 0.0
+        )
         component_losses = []
         total_loss = pred_actions.new_tensor(0.0)
         for key in self.output_keys:
@@ -584,6 +656,41 @@ class DexWildMotionModel(nn.Module):
             loss = _masked_mse(preds[key], target, mask)
             component_losses.append(loss)
             total_loss = total_loss + loss * float(loss_coef.get(key, 1.0))
+        for key in self.temporal_delta_keys:
+            target_full = self._stream_sequence(streams, key)
+            anchored_pred = torch.cat([target_full[:, :1], preds[key]], dim=1)
+            pred_delta = anchored_pred[:, 1:] - anchored_pred[:, :-1]
+            target_delta = target_full[:, 1:] - target_full[:, :-1]
+            loss = _masked_mse(pred_delta, target_delta, mask)
+            component_losses.append(loss)
+            total_loss = total_loss + loss * float(
+                loss_coef.get(f"{key}_delta", 1.0)
+            )
+        if self.use_selftouch and self.selftouch_teacher_loss_keys:
+            if compute_selftouch_teacher_loss is None:
+                compute_selftouch_teacher_loss = selftouch_teacher_coef != 0.0
+            if compute_selftouch_teacher_loss:
+                teacher_features = self._selftouch_teacher_features(
+                    streams,
+                    **selftouch_kwargs,
+                )
+                teacher_losses = []
+                for key in self.selftouch_teacher_loss_keys:
+                    if key not in preds or key not in teacher_features:
+                        continue
+                    teacher_target = _fit_timesteps(
+                        teacher_features[key].detach(),
+                        preds[key].shape[1],
+                    )
+                    teacher_losses.append(_masked_mse(preds[key], teacher_target, mask))
+                if teacher_losses:
+                    teacher_loss = torch.stack(teacher_losses).mean()
+                else:
+                    teacher_loss = total_loss * 0.0
+            else:
+                teacher_loss = total_loss * 0.0
+            component_losses.append(teacher_loss)
+            total_loss = total_loss + teacher_loss * selftouch_teacher_coef
         if "noise_pred" in aux:
             diffusion_loss = _masked_mse(aux["noise_pred"], aux["noise"], mask)
             total_loss = total_loss + diffusion_loss * float(

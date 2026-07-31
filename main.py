@@ -406,7 +406,16 @@ class MainExectutor:
         self.params["Model"] = self.model_param
         self.params["Dataset"] = self.dataset_param
         self.model_param["sequence_length"] = self.dataset_param.get("sequence_length")
-        checkpoint_name = f"epoch{int(self.params.get('Train', {}).get('num_epochs', 1)) - 1}.pth"
+        train_params = self.params.get("Train", {})
+        use_best_checkpoint = bool(
+            train_params.get("save_best_checkpoint", False)
+            and int(train_params.get("eval_every", 0) or 0) > 0
+        )
+        checkpoint_name = (
+            "best.pth"
+            if use_best_checkpoint
+            else f"epoch{int(train_params.get('num_epochs', 1)) - 1}.pth"
+        )
         for section in ("Test", "Motion"):
             if section in self.params:
                 self.params[section]["model_load_path"] = os.path.join(
