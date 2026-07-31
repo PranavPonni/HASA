@@ -7,6 +7,7 @@
 #include <vector>
 #include <memory>
 #include <deque>
+#include <set>
 
 #include "rclcpp/rclcpp.hpp"
 #include "manus_ros2_msgs/msg/manus_ergonomics.hpp"
@@ -123,6 +124,11 @@ protected:
     //Connection type in case of remote m_IP is used, if empty auto discovery is used
     ConnectionType m_ConnectionType = ConnectionType::ConnectionType_Integrated;
     std::string m_Ip = "";
+    int m_HostDiscoverySeconds = 5;
+    bool m_AutoPair = true;
+    uint32_t m_LastLandscapeGloveCount = UINT32_MAX;
+    uint32_t m_LastLandscapeDongleCount = UINT32_MAX;
+    std::set<uint32_t> m_PairingAttempted;
     
     //Coordinate system settings
     bool m_WorldSpace = true;

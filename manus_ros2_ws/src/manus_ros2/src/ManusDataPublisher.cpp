@@ -20,6 +20,26 @@ ManusDataPublisher::ManusDataPublisher() : Node("manus_data_publisher")
     }
     s_Instance = this;
 
+    const std::string t_ConnectionMode =
+        this->declare_parameter<std::string>("connection_mode", "integrated");
+    m_Ip = this->declare_parameter<std::string>("host_ip", "");
+    m_HostDiscoverySeconds =
+        this->declare_parameter<int>("host_discovery_seconds", 5);
+    m_AutoPair = this->declare_parameter<bool>("auto_pair", true);
+
+    if (t_ConnectionMode == "integrated")
+        m_ConnectionType = ConnectionType::ConnectionType_Integrated;
+    else if (t_ConnectionMode == "local")
+        m_ConnectionType = ConnectionType::ConnectionType_Local;
+    else if (t_ConnectionMode == "remote")
+        m_ConnectionType = ConnectionType::ConnectionType_Remote;
+    else
+        throw std::invalid_argument(
+            "connection_mode must be integrated, local, or remote");
+
+    if (m_HostDiscoverySeconds < 1)
+        m_HostDiscoverySeconds = 1;
+
     // Initialize static variables
     m_LastLogTime = std::chrono::steady_clock::now();
     m_PublishCountMap.clear();
@@ -44,6 +64,10 @@ ManusDataPublisher::ManusDataPublisher() : Node("manus_data_publisher")
     m_ConnectionType == ConnectionType::ConnectionType_Integrated
         ? ClientLog::print("MANUS data publisher is running in integrated mode.")
         : ClientLog::print("MANUS data publisher is connecting to MANUS Core.");
+    ClientLog::print(
+        "Connection settings: mode={}, host_ip={}, discovery={}s, auto_pair={}.",
+        t_ConnectionMode, m_Ip.empty() ? "<auto>" : m_Ip,
+        m_HostDiscoverySeconds, m_AutoPair ? "true" : "false");
 
     while (Connect() != ClientReturnCode::ClientReturnCode_Success)
     {
@@ -256,6 +280,44 @@ void ManusDataPublisher::PublishCallback()
         return;
     }
 
+    if (m_LastLandscapeDongleCount != m_Landscape->gloveDevices.dongleCount ||
+        m_LastLandscapeGloveCount != m_Landscape->gloveDevices.gloveCount)
+    {
+        m_LastLandscapeDongleCount = m_Landscape->gloveDevices.dongleCount;
+        m_LastLandscapeGloveCount = m_Landscape->gloveDevices.gloveCount;
+        ClientLog::print("MANUS devices: {} dongle(s), {} glove(s).",
+                         m_LastLandscapeDongleCount, m_LastLandscapeGloveCount);
+        if (m_LastLandscapeDongleCount > 0 && m_LastLandscapeGloveCount == 0)
+        {
+            ClientLog::print(
+                "No glove is visible. Turn the glove on and hold it near its "
+                "dongle; automatic pairing is {}.",
+                m_AutoPair ? "enabled" : "disabled");
+        }
+    }
+
+    if (m_AutoPair)
+    {
+        for (size_t i = 0; i < m_Landscape->gloveDevices.gloveCount; ++i)
+        {
+            const auto &t_Glove = m_Landscape->gloveDevices.gloves[i];
+            if (t_Glove.pairedState == DevicePairedState_Unpaired &&
+                m_PairingAttempted.insert(t_Glove.id).second)
+            {
+                bool t_Paired = false;
+                const SDKReturnCode t_Result =
+                    CoreSdk_PairGlove(t_Glove.id, &t_Paired);
+                if (t_Result == SDKReturnCode::SDKReturnCode_Success && t_Paired)
+                    ClientLog::print("Paired glove {} automatically.", t_Glove.id);
+                else
+                    ClientLog::error(
+                        "Automatic pairing failed for glove {} (SDK result {}, "
+                        "paired {}).",
+                        t_Glove.id, static_cast<int32_t>(t_Result), t_Paired);
+            }
+        }
+    }
+
     static bool s_LicenseErrorShown = false;
 
     if (!s_LicenseErrorShown)
@@ -430,7 +492,8 @@ void ManusDataPublisher::PublishCallback()
 /// @brief the client will now try to connect to MANUS Core via the SDK when the ConnectionType is not integrated. These steps still need to be followed when using the integrated ConnectionType.
 ClientReturnCode ManusDataPublisher::Connect()
 {
-    SDKReturnCode t_StartResult = CoreSdk_LookForHosts(5, false);
+    SDKReturnCode t_StartResult =
+        CoreSdk_LookForHosts(static_cast<uint32_t>(m_HostDiscoverySeconds), false);
     if (t_StartResult != SDKReturnCode::SDKReturnCode_Success)
     {
         return ClientReturnCode::ClientReturnCode_FailedToFindHosts;
@@ -467,16 +530,23 @@ ClientReturnCode ManusDataPublisher::Connect()
     else
     {
         ClientLog::print("Looking for host with IP address: {}", m_Ip);
+        bool t_HostFound = false;
         for (size_t i = 0; i < t_NumberOfHostsFound; i++)
         {
             auto t_HostInfo = t_AvailableHosts[i];
             std::string t_HostAddr = t_HostInfo.ipAddress;
             std::string hostIp = t_HostAddr.substr(0, t_HostAddr.find(':'));
-            if (hostIp == m_Ip)
+            if (hostIp == m_Ip || t_HostAddr == m_Ip)
             {
                 t_HostSelection = i;
+                t_HostFound = true;
                 break;
             }
+        }
+        if (!t_HostFound)
+        {
+            ClientLog::error("No discovered MANUS Core host matches {}.", m_Ip);
+            return ClientReturnCode::ClientReturnCode_FailedToFindHosts;
         }
     }
 

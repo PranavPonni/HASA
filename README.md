@@ -206,6 +206,21 @@ ros2 run manus_ros2 manus_data_publisher
 
 ```
 
+The publisher uses MANUS Core Integrated by default, automatically discovers
+the attached dongle, and attempts to pair any visible unpaired glove. Its
+startup log must report at least `1 glove(s)` before continuing. If it reports
+`0 glove(s)`, switch on/charge the glove and hold it near the MANUS dongle.
+
+For a MANUS Core running on another computer, use:
+
+```bash
+ros2 run manus_ros2 manus_data_publisher --ros-args \
+  -p connection_mode:=remote -p host_ip:=192.168.11.123
+```
+
+The host may also be supplied as `IP:port`. An unmatched address now produces
+an error instead of silently connecting to the first discovered Core.
+
 **Open terminal 5** 
 
 ```bash
