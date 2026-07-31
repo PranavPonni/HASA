@@ -1,4 +1,6 @@
-from py_node_exec import NodeExec
+from model.ros_bridge_utils import ensure_ros_workspace_paths, ensure_rospy_node
+ensure_ros_workspace_paths()
+
 from allegro_package import AllegroHand
 from xela_py import TactileSubscriber
 import numpy as np
@@ -9,6 +11,7 @@ class XelAllegro:
                  ctrl_freq: float = 20.0,
                  hand_topic_prefix: str = "allegroHand_0",
                  tactile_topic_prefix: list = ["index_tip", "thumb_tip"]):
+        ensure_rospy_node()
         self._hand = AllegroHand(
             hand_topic_prefix=hand_topic_prefix,
             ctrl_freq=ctrl_freq

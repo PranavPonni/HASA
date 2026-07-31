@@ -1,4 +1,6 @@
-from py_node_exec import NodeExec
+from model.ros_bridge_utils import ensure_ros_workspace_paths, ensure_rospy_node
+ensure_ros_workspace_paths()
+
 from allegro_package import AllegroHand
 from xela_py import TactileSubscriber
 import numpy as np
@@ -9,8 +11,8 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import data_preproc as dp
 
-# Joint indices used by the model (index + thumb fingers)
-_JOINT_IDX = [0, 1, 2, 3, 12, 13, 14, 15]
+# Joint indices used by the model (all Allegro fingers)
+_JOINT_IDX = list(range(16))
 
 # Ready pose: full 16-DOF start configuration for rugby rotation task
 # Sourced from episode0/timestep0 of training data
@@ -30,6 +32,7 @@ class XelAllegro:
                  ctrl_freq: float = 20.0,
                  hand_topic_prefix: str = "allegroHand_0",
                  tactile_topic_prefix: list = ["index_tip", "middle_tip", "ring_tip", "thumb_tip"]):
+        ensure_rospy_node()
         self._hand = AllegroHand(
             hand_topic_prefix=hand_topic_prefix,
             ctrl_freq=ctrl_freq
@@ -103,14 +106,26 @@ class XelAllegro:
             time.sleep(dt)
         print("Ready pose reached.")
 
-    def wait_for_start(self):
-        """Hold the ready pose, prompt the user to place the object, then wait for Enter."""
+    def wait_for_start(self, wait_sec: float = 5.0, require_enter: bool = False):
+        """Hold ready pose so the object can be placed before motion starts."""
         print("\n--- T-RNN: Rugby rotation ready ---")
-        print("Place the rugby ball in the hand and press Enter to start motion...")
-        for _ in range(5):          # keep sending command so hand doesn't drift
+        print("Place the rugby ball in the hand.")
+        deadline = time.time() + max(float(wait_sec), 0.0)
+        dt = 1.0 / self._ctrl_freq
+        next_print = 0
+        while time.time() < deadline:
+            remaining = deadline - time.time()
+            whole = int(np.ceil(remaining))
+            if whole != next_print:
+                next_print = whole
+                print(f"  starts in {whole}s")
             self.set_jnt_cmd(_READY_POSE)
-            time.sleep(0.2)
-        input()                     # blocks until Enter
+            time.sleep(min(dt, max(remaining, 0.0)))
+        if require_enter:
+            print("Press Enter to start motion generation.")
+            self.set_jnt_cmd(_READY_POSE)
+            input()
+        self._start_wait_done = True
         print("Starting motion generation.")
 
     def run_motion(
@@ -144,6 +159,11 @@ class XelAllegro:
         for _ in range(3):
             self.set_jnt_cmd(_READY_POSE)
             time.sleep(dt)
+        if not getattr(self, "_start_wait_done", False):
+            self.wait_for_start(
+                wait_sec=float(dataset_param.get("object_place_wait_sec", 5.0)),
+                require_enter=bool(dataset_param.get("wait_for_enter_before_motion", False)),
+            )
 
         print(f"Running {n_steps} steps at {self._ctrl_freq} Hz...")
         t_start = time.time()
@@ -159,7 +179,7 @@ class XelAllegro:
             tac_thb_raw  = np.asarray(obs["tactile_thumb_tip"], dtype=np.float32).reshape(-1)
             pos_raw_full = np.asarray(obs["hand_jnt_pos"],      dtype=np.float32)   # (16,)
 
-            pos_raw = pos_raw_full[_JOINT_IDX]   # (8,)
+            pos_raw = pos_raw_full[_JOINT_IDX]   # (16,)
 
             # ---- 2. Normalise ----
             tac_idx_n = dp.scaling_data(tac_idx_raw, scaling_param["tactile_index_tip"], modality["tactile_index_tip"])
@@ -179,14 +199,14 @@ class XelAllegro:
                 )
 
             # ---- 5. Unnormalise predicted joint positions ----
-            pos_pred_np = pos_pred_n.squeeze(0).cpu().numpy()      # (8,)
-            pos_cmd_8   = dp.unscale_data(pos_pred_np,
-                                           scaling_param["hand_jnt_pos"],
-                                           modality["hand_jnt_pos"])  # (8,) raw rad
+            pos_pred_np = pos_pred_n.squeeze(0).cpu().numpy()      # (16,)
+            pos_cmd = dp.unscale_data(pos_pred_np,
+                                      scaling_param["hand_jnt_pos"],
+                                      modality["hand_jnt_pos"])  # (16,) raw rad
 
-            # ---- 6. Expand to 16-DOF command (hold non-predicted joints at ready pose) ----
+            # ---- 6. Expand to 16-DOF command ----
             cmd_16 = _READY_POSE.copy()
-            cmd_16[_JOINT_IDX] = pos_cmd_8
+            cmd_16[_JOINT_IDX] = pos_cmd
 
             # ---- 7. Send command ----
             self.set_jnt_cmd(cmd_16.astype(np.float32))

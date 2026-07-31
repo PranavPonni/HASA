@@ -10,7 +10,16 @@ def _cfg_float(cfg, key, default=0.0):
     return float((cfg or {}).get(key, default))
 
 
-def supervised_contrastive_loss(features, labels, temperature=0.1):
+def _cfg_bool(cfg, key, default=False):
+    value = (cfg or {}).get(key, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def supervised_contrastive_loss(features, labels, temperature=0.1, pair_weights=None):
     """Supervised contrastive loss over batch labels, with no tactile target use."""
     if labels is None or features is None or features.shape[0] < 2:
         return features.sum() * 0.0
@@ -25,6 +34,10 @@ def supervised_contrastive_loss(features, labels, temperature=0.1):
         return features.sum() * 0.0
 
     exp_logits = torch.exp(logits) * (~eye).float()
+    if pair_weights is not None:
+        pair_weights = pair_weights.to(device=features.device, dtype=features.dtype)
+        if pair_weights.shape == exp_logits.shape:
+            exp_logits = exp_logits * pair_weights
     log_prob = logits - torch.log(exp_logits.sum(dim=1, keepdim=True).clamp_min(1e-8))
     positive_count = positive.sum(dim=1).clamp_min(1)
     per_sample = -(log_prob * positive.float()).sum(dim=1) / positive_count
@@ -73,6 +86,9 @@ def finger_loss_config(loss_coef, tactile_key):
     slopes = cfg.get("tactile_raw_slope_by_key")
     if isinstance(slopes, dict) and tactile_key in slopes:
         cfg["tactile_raw_slope"] = slopes[tactile_key]
+    offsets = cfg.get("tactile_raw_offset_by_key")
+    if isinstance(offsets, dict) and tactile_key in offsets:
+        cfg["tactile_raw_offset"] = offsets[tactile_key]
     return cfg
 
 
@@ -244,6 +260,14 @@ def _raw_delta(pred, target, raw_slope):
     return (pred - target) * slope
 
 
+def _raw_target_value(target, raw_slope, raw_offset):
+    slope = _scale_view(raw_slope, target)
+    offset = _scale_view(raw_offset, target)
+    if slope is None or offset is None:
+        return None
+    return target * slope + offset
+
+
 def _raw_l1_loss(pred, target, raw_slope, normalizer, clip=None):
     delta = _raw_delta(pred, target, raw_slope)
     if delta is None:
@@ -301,6 +325,20 @@ def _raw_scaled_topk_abs_error_loss(pred, target, raw_scale, count, ratio=0.0):
     return flat_error.topk(k, dim=-1).values.mean()
 
 
+def _raw_topk_l1_loss(pred, target, raw_slope, normalizer, count, ratio=0.0, clip=None):
+    delta = _raw_delta(pred, target, raw_slope)
+    if delta is None:
+        return pred.sum() * 0.0
+    error = delta.abs()
+    if clip is not None and float(clip) > 0.0:
+        error = error.clamp(max=float(clip))
+    flat_error = error.reshape(pred.shape[0], -1)
+    if flat_error.shape[-1] == 0:
+        return pred.sum() * 0.0
+    k = _topk_count(flat_error.shape[-1], count, ratio)
+    return flat_error.topk(k, dim=-1).values.mean() / float(normalizer)
+
+
 def _target_peak_error_loss(pred, target, count, ratio=0.0):
     flat_target = target.detach().reshape(target.shape[0], -1)
     flat_pred = pred.reshape(pred.shape[0], -1)
@@ -351,6 +389,53 @@ def _contact_region_l1(pred, target, cfg, contact=True):
     if not bool(mask.any()):
         return pred.sum() * 0.0
     return F.l1_loss(pred[mask], target[mask])
+
+
+def _raw_contact_mask(target, cfg, raw_slope, raw_offset):
+    threshold = _cfg_float(
+        cfg,
+        "tactile_raw_contact_threshold",
+        _cfg_float(cfg, "tactile_active_taxel_threshold", 0.0),
+    )
+    if threshold > 0.0:
+        raw_target = _raw_target_value(target.detach(), raw_slope, raw_offset)
+        if raw_target is not None:
+            return raw_target.abs() >= threshold
+    return _contact_mask(target, cfg)
+
+
+def _raw_contact_region_l1(pred, target, cfg, raw_slope, normalizer, contact=True, clip=None):
+    mask = _raw_contact_mask(target, cfg, raw_slope, cfg.get("tactile_raw_offset"))
+    if not contact:
+        mask = ~mask
+    if not bool(mask.any()):
+        return pred.sum() * 0.0
+    delta = _raw_delta(pred, target, raw_slope)
+    if delta is None:
+        return pred.sum() * 0.0
+    error = delta.abs()
+    if clip is not None and float(clip) > 0.0:
+        error = error.clamp(max=float(clip))
+    return error[mask].mean() / float(normalizer)
+
+
+def _raw_active_margin_loss(pred, target, cfg, raw_slope, normalizer, clip=None):
+    mask = _raw_contact_mask(target, cfg, raw_slope, cfg.get("tactile_raw_offset"))
+    if not bool(mask.any()):
+        return pred.sum() * 0.0
+    delta = _raw_delta(pred, target, raw_slope)
+    if delta is None:
+        return pred.sum() * 0.0
+    error = delta.abs()
+    if clip is not None and float(clip) > 0.0:
+        error = error.clamp(max=float(clip))
+    margin = _cfg_float(
+        cfg,
+        "tactile_raw_active_margin",
+        _cfg_float(cfg, "tactile_accuracy_tolerance", 200.0),
+    )
+    overflow = F.relu(error - max(float(margin), 0.0))
+    return overflow[mask].mean() / float(normalizer)
 
 
 def _active_region_loss(pred, target, ratio):
@@ -427,13 +512,6 @@ def active_tactile_loss(pred, target, loss_cfg=None):
     if mae_weight:
         loss = loss + mae_weight * F.l1_loss(pred, target)
 
-    raw_scale = cfg.get("tactile_raw_scale")
-    raw_scale_weight = _cfg_float(cfg, "tactile_raw_scale_weight")
-    if raw_scale_weight:
-        raw_error = _raw_scaled_error(pred, target, raw_scale)
-        if raw_error is not None:
-            loss = loss + raw_scale_weight * raw_error.mean()
-
     raw_slope = cfg.get("tactile_raw_slope")
     raw_mean_normalizer = max(_cfg_float(cfg, "tactile_raw_mean_loss_scale", 20.0), 1e-6)
     raw_error_normalizer = max(_cfg_float(cfg, "tactile_raw_error_loss_scale", raw_mean_normalizer), 1e-6)
@@ -457,6 +535,147 @@ def active_tactile_loss(pred, target, loss_cfg=None):
             raw_error_normalizer,
             _cfg_float(cfg, "tactile_raw_huber_beta", 80.0),
             raw_error_clip,
+        )
+
+    if _cfg_bool(cfg, "tactile_fast_loss", False):
+        raw_contact_weight = _cfg_float(cfg, "tactile_raw_contact_weight")
+        if raw_contact_weight and pred.ndim >= 3 and target.ndim >= 3:
+            loss = loss + raw_contact_weight * _raw_contact_region_l1(
+                pred,
+                target,
+                cfg,
+                raw_slope,
+                raw_error_normalizer,
+                contact=True,
+                clip=raw_error_clip,
+            )
+
+        raw_active_margin_weight = _cfg_float(cfg, "tactile_raw_active_margin_weight")
+        if raw_active_margin_weight and pred.ndim >= 3 and target.ndim >= 3:
+            loss = loss + raw_active_margin_weight * _raw_active_margin_loss(
+                pred,
+                target,
+                cfg,
+                raw_slope,
+                raw_error_normalizer,
+                clip=raw_error_clip,
+            )
+
+        contact_mae_weight = _cfg_float(cfg, "tactile_contact_mae_weight")
+        if contact_mae_weight and pred.ndim >= 3 and target.ndim >= 3:
+            loss = loss + contact_mae_weight * _contact_region_l1(
+                pred,
+                target,
+                cfg,
+                contact=True,
+            )
+
+        inactive_weight = _cfg_float(cfg, "tactile_inactive_weight")
+        if inactive_weight and pred.ndim >= 3 and target.ndim >= 3:
+            loss = loss + inactive_weight * _contact_region_l1(
+                pred,
+                target,
+                cfg,
+                contact=False,
+            )
+
+        raw_inactive_weight = _cfg_float(cfg, "tactile_raw_inactive_weight")
+        if raw_inactive_weight and pred.ndim >= 3 and target.ndim >= 3:
+            loss = loss + raw_inactive_weight * _raw_contact_region_l1(
+                pred,
+                target,
+                cfg,
+                raw_slope,
+                raw_error_normalizer,
+                contact=False,
+                clip=raw_error_clip,
+            )
+
+        raw_topk_weight = _cfg_float(cfg, "tactile_raw_topk_weight")
+        if raw_topk_weight and pred.ndim >= 3 and target.ndim >= 3:
+            loss = loss + raw_topk_weight * _raw_topk_l1_loss(
+                pred,
+                target,
+                raw_slope,
+                raw_error_normalizer,
+                _cfg_float(cfg, "tactile_topk_count", 12),
+                _cfg_float(cfg, "tactile_topk_ratio", 0.0),
+                raw_error_clip,
+            )
+
+        raw_timestep_mean_weight = _cfg_float(cfg, "tactile_raw_timestep_mean_weight")
+        if raw_timestep_mean_weight and pred.ndim >= 3 and target.ndim >= 3:
+            loss = loss + raw_timestep_mean_weight * _raw_timestep_mean_loss(
+                pred,
+                target,
+                raw_slope,
+                raw_mean_normalizer,
+            )
+
+        timestep_mean_weight = _cfg_float(cfg, "tactile_timestep_mean_weight")
+        if timestep_mean_weight and pred.ndim >= 3 and target.ndim >= 3:
+            loss = loss + timestep_mean_weight * F.l1_loss(pred.mean(dim=-1), target.mean(dim=-1))
+
+        raw_taxel_mean_weight = _cfg_float(cfg, "tactile_raw_taxel_mean_weight")
+        if raw_taxel_mean_weight and pred.ndim >= 3 and target.ndim >= 3:
+            loss = loss + raw_taxel_mean_weight * _raw_taxel_mean_loss(
+                pred,
+                target,
+                raw_slope,
+                raw_mean_normalizer,
+            )
+
+        return loss
+
+    raw_scale = cfg.get("tactile_raw_scale")
+    raw_scale_weight = _cfg_float(cfg, "tactile_raw_scale_weight")
+    if raw_scale_weight:
+        raw_error = _raw_scaled_error(pred, target, raw_scale)
+        if raw_error is not None:
+            loss = loss + raw_scale_weight * raw_error.mean()
+
+    inactive_weight = _cfg_float(cfg, "tactile_inactive_weight")
+    if inactive_weight and pred.ndim >= 3 and target.ndim >= 3:
+        loss = loss + inactive_weight * _contact_region_l1(
+            pred,
+            target,
+            cfg,
+            contact=False,
+        )
+
+    raw_inactive_weight = _cfg_float(cfg, "tactile_raw_inactive_weight")
+    if raw_inactive_weight and pred.ndim >= 3 and target.ndim >= 3:
+        loss = loss + raw_inactive_weight * _raw_contact_region_l1(
+            pred,
+            target,
+            cfg,
+            raw_slope,
+            raw_error_normalizer,
+            contact=False,
+            clip=raw_error_clip,
+        )
+
+    raw_contact_weight = _cfg_float(cfg, "tactile_raw_contact_weight")
+    if raw_contact_weight and pred.ndim >= 3 and target.ndim >= 3:
+        loss = loss + raw_contact_weight * _raw_contact_region_l1(
+            pred,
+            target,
+            cfg,
+            raw_slope,
+            raw_error_normalizer,
+            contact=True,
+            clip=raw_error_clip,
+        )
+
+    raw_active_margin_weight = _cfg_float(cfg, "tactile_raw_active_margin_weight")
+    if raw_active_margin_weight and pred.ndim >= 3 and target.ndim >= 3:
+        loss = loss + raw_active_margin_weight * _raw_active_margin_loss(
+            pred,
+            target,
+            cfg,
+            raw_slope,
+            raw_error_normalizer,
+            clip=raw_error_clip,
         )
 
     raw_bias_weight = _cfg_float(cfg, "tactile_raw_bias_weight")
@@ -663,12 +882,14 @@ def active_tactile_loss(pred, target, loss_cfg=None):
 
     raw_topk_weight = _cfg_float(cfg, "tactile_raw_topk_weight")
     if raw_topk_weight:
-        loss = loss + raw_topk_weight * _raw_scaled_topk_abs_error_loss(
+        loss = loss + raw_topk_weight * _raw_topk_l1_loss(
             pred,
             target,
-            raw_scale,
+            raw_slope,
+            raw_error_normalizer,
             _cfg_float(cfg, "tactile_topk_count", 12),
             _cfg_float(cfg, "tactile_topk_ratio", 0.0),
+            raw_error_clip,
         )
 
     return loss

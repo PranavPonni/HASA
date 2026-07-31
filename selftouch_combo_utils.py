@@ -11,16 +11,16 @@ COMBO_KEYS = (
     "thumb_middle",
     "index_middle",
     "middle_ring",
-    "thumb_index_middle",
     "index_middle_ring",
+    "thumb_index_middle",
 )
 COMBO_TO_TACTILE_KEYS = {
     "thumb_index": ("tactile_thumb_tip", "tactile_index_tip"),
     "thumb_middle": ("tactile_thumb_tip", "tactile_middle_tip"),
     "index_middle": ("tactile_index_tip", "tactile_middle_tip"),
     "middle_ring": ("tactile_middle_tip", "tactile_ring_tip"),
-    "thumb_index_middle": ("tactile_thumb_tip", "tactile_index_tip", "tactile_middle_tip"),
     "index_middle_ring": ("tactile_index_tip", "tactile_middle_tip", "tactile_ring_tip"),
+    "thumb_index_middle": ("tactile_thumb_tip", "tactile_index_tip", "tactile_middle_tip"),
 }
 
 

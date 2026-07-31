@@ -33,6 +33,16 @@ def _masked_mse(pred, target, mask):
     return (loss * mask).sum() / mask.sum().clamp_min(1.0)
 
 
+def _fit_timesteps(value, target_len):
+    """Crop or zero-pad temporal features to match the policy observation length."""
+    if value.shape[1] == target_len:
+        return value
+    if value.shape[1] > target_len:
+        return value[:, :target_len]
+    pad = value.new_zeros(value.shape[0], target_len - value.shape[1], value.shape[-1])
+    return torch.cat([value, pad], dim=1)
+
+
 class SinusoidalPosEmb(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -87,16 +97,25 @@ class MotionACT(nn.Module):
         self.decoder = nn.TransformerDecoder(dec_layer, num_layers=dec_layers)
         self.out = nn.Linear(d_model, action_dim)
 
-    def forward(self, obs, target_actions=None):
-        batch_size, steps, _ = obs.shape
-        if steps > self.pos.shape[1]:
-            raise ValueError(f"Sequence length {steps} exceeds max_seq_len")
-        src = self.obs_proj(obs) + self.pos[:, :steps]
-        mask = _causal_mask(steps, obs.device) if self.causal else None
-        memory = self.encoder(src, mask=mask)
-        query_idx = torch.arange(steps, device=obs.device)
+    def forward(self, obs, target_actions=None, output_steps=None):
+        batch_size, src_steps, _ = obs.shape
+        if target_actions is not None:
+            query_steps = int(target_actions.shape[1])
+        elif output_steps is not None:
+            query_steps = int(output_steps)
+        else:
+            query_steps = int(src_steps)
+        if src_steps > self.pos.shape[1] or query_steps > self.query.num_embeddings:
+            raise ValueError(
+                f"Sequence length src={src_steps}, query={query_steps} exceeds max_seq_len"
+            )
+        src = self.obs_proj(obs) + self.pos[:, :src_steps]
+        src_mask = _causal_mask(src_steps, obs.device) if self.causal else None
+        tgt_mask = _causal_mask(query_steps, obs.device) if self.causal else None
+        memory = self.encoder(src, mask=src_mask)
+        query_idx = torch.arange(query_steps, device=obs.device)
         tgt = self.query(query_idx)[None].expand(batch_size, -1, -1)
-        pred = self.decoder(tgt, memory, tgt_mask=mask)
+        pred = self.decoder(tgt, memory, tgt_mask=tgt_mask)
         return self.out(pred), {}
 
 
@@ -222,25 +241,53 @@ class MotionDiffusion(nn.Module):
 
 
 class DexWildMotionModel(nn.Module):
+    TACTILE_OUTPUT_MAP = {
+        "tactile_index_tip": ("idx_pred", 0),
+        "tactile_thumb_tip": ("thumb_pred", 1),
+        "tactile_middle_tip": ("middle_pred", 2),
+        "tactile_ring_tip": ("ring_pred", 3),
+    }
+
     def __init__(self, param, selftouch=None):
         super().__init__()
         self.param = param
         self.hand_dim = int(param["hand_dim"])
         self.tactile_dim = int(param["tactile_dim"])
         self.use_selftouch = bool(param.get("use_selftouch", False))
-        self.use_velocity_input = bool(param.get("use_velocity_input", False))
         self.selftouch = selftouch
         self.selftouch_input_dim = int(param.get("selftouch_input_dim", 16))
         self.selftouch_joint_indices = list(
-            param.get("selftouch_joint_indices", [0, 1, 2, 3, 12, 13, 14, 15])
+            param.get("selftouch_joint_indices", list(range(16)))
         )
+        self.tactile_keys = tuple(
+            param.get(
+                "tactile_keys",
+                [
+                    "tactile_index_tip",
+                    "tactile_thumb_tip",
+                    "tactile_middle_tip",
+                    "tactile_ring_tip",
+                ],
+            )
+        )
+        if "joint_state_keys" in param:
+            self.joint_state_keys = tuple(param["joint_state_keys"])
+        elif bool(param.get("use_velocity_input", False)):
+            self.joint_state_keys = ("hand_jnt_pos", "hand_jnt_vel")
+        else:
+            self.joint_state_keys = ("hand_jnt_pos",)
+        self.selftouch_feature_keys = tuple(
+            param.get("selftouch_feature_keys", self.tactile_keys)
+        )
+        self.output_keys = self.tactile_keys + self.joint_state_keys
+        self.loss_names = ("total_loss",) + self.output_keys
 
-        obs_dim = 2 * self.tactile_dim + self.hand_dim
-        if self.use_velocity_input:
-            obs_dim += self.hand_dim
+        obs_dim = len(self.tactile_keys) * self.tactile_dim
+        obs_dim += len(self.joint_state_keys) * self.hand_dim
         if self.use_selftouch:
-            obs_dim += 2 * self.tactile_dim
-        self.action_dim = 2 * self.tactile_dim + 2 * self.hand_dim
+            obs_dim += len(self.selftouch_feature_keys) * self.tactile_dim
+        self.action_dim = len(self.tactile_keys) * self.tactile_dim
+        self.action_dim += len(self.joint_state_keys) * self.hand_dim
 
         arch = str(param.get("dexwild_arch", "act")).lower()
         if arch == "act":
@@ -258,6 +305,12 @@ class DexWildMotionModel(nn.Module):
             for p in self.selftouch.parameters():
                 p.requires_grad = False
 
+    def train(self, mode=True):
+        super().train(mode)
+        if self.selftouch is not None:
+            self.selftouch.eval()
+        return self
+
     def _expand_selftouch_joint(self, x):
         if x.shape[-1] == self.selftouch_input_dim:
             return x
@@ -268,29 +321,103 @@ class DexWildMotionModel(nn.Module):
         index = torch.tensor(indices, dtype=torch.long, device=x.device)
         return out.index_copy(-1, index, x[..., : len(indices)])
 
+    def _as_sequence(self, value, reference):
+        if value is None:
+            return None
+        if value.dim() == 2 and reference.dim() == 3:
+            return value[:, None]
+        return value
+
+    def _stream_sequence(self, streams, key, reference=None):
+        value = streams.get(key)
+        if value is None:
+            if reference is None:
+                raise KeyError(f"Missing required motion stream: {key}")
+            value = torch.zeros_like(reference)
+        if reference is not None:
+            value = self._as_sequence(value, reference)
+        return value
+
+    def _motion_streams_from_args(
+        self,
+        tactile_index_tip=None,
+        tactile_thumb_tip=None,
+        hand_jnt_pos=None,
+        hand_jnt_vel=None,
+        **streams,
+    ):
+        if tactile_index_tip is not None:
+            streams["tactile_index_tip"] = tactile_index_tip
+        if tactile_thumb_tip is not None:
+            streams["tactile_thumb_tip"] = tactile_thumb_tip
+        if hand_jnt_pos is not None:
+            streams["hand_jnt_pos"] = hand_jnt_pos
+        if hand_jnt_vel is not None:
+            streams["hand_jnt_vel"] = hand_jnt_vel
+        reference = next((streams.get(k) for k in self.output_keys if streams.get(k) is not None), None)
+        if reference is not None:
+            for key, value in list(streams.items()):
+                if torch.is_tensor(value):
+                    streams[key] = self._as_sequence(value, reference)
+        return streams
+
     def _selftouch_features(
         self,
-        hand_jnt_pos,
-        hand_jnt_vel,
+        streams,
         selftouch_hand_jnt_pos=None,
         selftouch_hand_jnt_vel=None,
         selftouch_hand_jnt_trq=None,
         selftouch_hand_jnt_cmd_pos=None,
+        selftouch_tactile_index_tip=None,
+        selftouch_tactile_thumb_tip=None,
+        selftouch_tactile_middle_tip=None,
+        selftouch_tactile_ring_tip=None,
+        selftouch_combo=None,
+        selftouch_phase=None,
     ):
         if not self.use_selftouch:
             return None
         if self.selftouch is None:
             raise RuntimeError("use_selftouch=True but no selftouch model was loaded")
 
+        hand_jnt_pos = self._stream_sequence(streams, "hand_jnt_pos")
+        fallback_joint = hand_jnt_pos
+        selftouch_hand_jnt_pos = self._as_sequence(selftouch_hand_jnt_pos, fallback_joint)
+        selftouch_hand_jnt_vel = self._as_sequence(selftouch_hand_jnt_vel, fallback_joint)
+        selftouch_hand_jnt_trq = self._as_sequence(selftouch_hand_jnt_trq, fallback_joint)
+        selftouch_hand_jnt_cmd_pos = self._as_sequence(
+            selftouch_hand_jnt_cmd_pos,
+            fallback_joint,
+        )
+        selftouch_tactile_index_tip = self._as_sequence(
+            selftouch_tactile_index_tip,
+            fallback_joint,
+        )
+        selftouch_tactile_thumb_tip = self._as_sequence(
+            selftouch_tactile_thumb_tip,
+            fallback_joint,
+        )
+        selftouch_tactile_middle_tip = self._as_sequence(
+            selftouch_tactile_middle_tip,
+            fallback_joint,
+        )
+        selftouch_tactile_ring_tip = self._as_sequence(
+            selftouch_tactile_ring_tip,
+            fallback_joint,
+        )
+        selftouch_combo = self._as_sequence(selftouch_combo, fallback_joint)
+        selftouch_phase = self._as_sequence(selftouch_phase, fallback_joint)
+
         pos = (
             selftouch_hand_jnt_pos
             if selftouch_hand_jnt_pos is not None
             else self._expand_selftouch_joint(hand_jnt_pos)
         )
+        vel_source = streams.get("hand_jnt_vel", torch.zeros_like(hand_jnt_pos))
         vel = (
             selftouch_hand_jnt_vel
             if selftouch_hand_jnt_vel is not None
-            else self._expand_selftouch_joint(hand_jnt_vel)
+            else self._expand_selftouch_joint(vel_source)
         )
         trq = (
             selftouch_hand_jnt_trq
@@ -302,144 +429,236 @@ class DexWildMotionModel(nn.Module):
             if selftouch_hand_jnt_cmd_pos is not None
             else pos
         )
+        if pos.shape[1] < 2:
+            return {
+                key: pos.new_zeros(pos.shape[0], pos.shape[1], self.tactile_dim)
+                for key in self.selftouch_feature_keys
+            }
         with torch.no_grad():
-            idx_self, thumb_self, *_ = self.selftouch(pos, vel, trq, cmd)
-        return idx_self, thumb_self
+            out = self.selftouch(
+                pos,
+                vel,
+                trq,
+                cmd,
+                tactile_index_tip=selftouch_tactile_index_tip,
+                tactile_thumb_tip=selftouch_tactile_thumb_tip,
+                tactile_middle_tip=selftouch_tactile_middle_tip,
+                tactile_ring_tip=selftouch_tactile_ring_tip,
+                selftouch_combo=selftouch_combo,
+                selftouch_phase=selftouch_phase,
+            )
+        features = {}
+        for key in self.selftouch_feature_keys:
+            dict_key, tuple_idx = self.TACTILE_OUTPUT_MAP[key]
+            if isinstance(out, dict):
+                features[key] = out[dict_key]
+            else:
+                features[key] = out[tuple_idx]
+        return features
 
-    def _build_obs(
-        self,
-        tactile_index_tip,
-        tactile_thumb_tip,
-        hand_jnt_pos,
-        hand_jnt_vel,
-        noise=None,
-        selftouch_hand_jnt_pos=None,
-        selftouch_hand_jnt_vel=None,
-        selftouch_hand_jnt_trq=None,
-        selftouch_hand_jnt_cmd_pos=None,
-    ):
+    def _slice_time(self, value, end):
+        if torch.is_tensor(value) and value.dim() >= 3:
+            return value[:, :end]
+        return value
+
+    def _slice_temporal_mapping(self, mapping, end):
+        return {key: self._slice_time(value, end) for key, value in mapping.items()}
+
+    def _trajectory_condition_steps(self, streams):
+        steps = int(self.param.get("trajectory_condition_steps", 0) or 0)
+        if steps <= 0:
+            return 0
+        reference = self._stream_sequence(streams, self.output_keys[0])
+        return max(1, min(steps, int(reference.shape[1])))
+
+    def _build_obs(self, streams, noise=None, drop_last=True, **selftouch_kwargs):
         tactile_std = _noise_value(noise, "tactile_noise", 0.0)
         joint_std = _noise_value(noise, "joint_noise", 0.0)
 
-        idx = _add_noise(tactile_index_tip[:, :-1], tactile_std)
-        thumb = _add_noise(tactile_thumb_tip[:, :-1], tactile_std)
-        pos = _add_noise(hand_jnt_pos[:, :-1], joint_std)
-        vel = _add_noise(hand_jnt_vel[:, :-1], joint_std)
+        parts = []
+        for key in self.tactile_keys:
+            seq = self._stream_sequence(streams, key)
+            if drop_last:
+                seq = seq[:, :-1]
+            parts.append(_add_noise(seq, tactile_std))
+        for key in self.joint_state_keys:
+            seq = self._stream_sequence(streams, key)
+            if drop_last:
+                seq = seq[:, :-1]
+            parts.append(_add_noise(seq, joint_std))
 
-        parts = [idx, thumb, pos]
-        if self.use_velocity_input:
-            parts.append(vel)
-        st_features = self._selftouch_features(
-            hand_jnt_pos,
-            hand_jnt_vel,
-            selftouch_hand_jnt_pos,
-            selftouch_hand_jnt_vel,
-            selftouch_hand_jnt_trq,
-            selftouch_hand_jnt_cmd_pos,
-        )
+        st_features = self._selftouch_features(streams, **selftouch_kwargs)
         if st_features is not None:
-            parts.extend([st_features[0][:, :-1], st_features[1][:, :-1]])
+            target_len = parts[0].shape[1]
+            for key in self.selftouch_feature_keys:
+                parts.append(_fit_timesteps(st_features[key], target_len))
         return torch.cat(parts, dim=-1)
 
-    def _target_actions(self, tactile_index_tip, tactile_thumb_tip, hand_jnt_pos, hand_jnt_vel):
+    def _target_actions(self, streams):
         return torch.cat(
-            [
-                tactile_index_tip[:, 1:],
-                tactile_thumb_tip[:, 1:],
-                hand_jnt_pos[:, 1:],
-                hand_jnt_vel[:, 1:],
-            ],
+            [self._stream_sequence(streams, key)[:, 1:] for key in self.output_keys],
             dim=-1,
         )
 
     def _split(self, actions):
-        return torch.split(
-            actions,
-            [self.tactile_dim, self.tactile_dim, self.hand_dim, self.hand_dim],
-            dim=-1,
-        )
+        widths = [
+            self.tactile_dim if key in self.tactile_keys else self.hand_dim
+            for key in self.output_keys
+        ]
+        return dict(zip(self.output_keys, torch.split(actions, widths, dim=-1)))
 
     def forward_loss(
         self,
-        tactile_index_tip,
-        tactile_thumb_tip,
-        hand_jnt_pos,
-        hand_jnt_vel,
-        data_found,
-        loss_coef,
+        tactile_index_tip=None,
+        tactile_thumb_tip=None,
+        hand_jnt_pos=None,
+        hand_jnt_vel=None,
+        data_found=None,
+        loss_coef=None,
         cls_rate=None,
         noise=None,
         selftouch_hand_jnt_pos=None,
         selftouch_hand_jnt_vel=None,
         selftouch_hand_jnt_trq=None,
         selftouch_hand_jnt_cmd_pos=None,
-        **_unused,
+        selftouch_tactile_index_tip=None,
+        selftouch_tactile_thumb_tip=None,
+        selftouch_tactile_middle_tip=None,
+        selftouch_tactile_ring_tip=None,
+        selftouch_combo=None,
+        selftouch_phase=None,
+        **streams,
     ):
-        obs = self._build_obs(
-            tactile_index_tip,
-            tactile_thumb_tip,
-            hand_jnt_pos,
-            hand_jnt_vel,
-            noise=noise,
-            selftouch_hand_jnt_pos=selftouch_hand_jnt_pos,
-            selftouch_hand_jnt_vel=selftouch_hand_jnt_vel,
-            selftouch_hand_jnt_trq=selftouch_hand_jnt_trq,
-            selftouch_hand_jnt_cmd_pos=selftouch_hand_jnt_cmd_pos,
+        del cls_rate
+        streams = self._motion_streams_from_args(
+            tactile_index_tip=tactile_index_tip,
+            tactile_thumb_tip=tactile_thumb_tip,
+            hand_jnt_pos=hand_jnt_pos,
+            hand_jnt_vel=hand_jnt_vel,
+            **streams,
         )
-        target_actions = self._target_actions(
-            tactile_index_tip, tactile_thumb_tip, hand_jnt_pos, hand_jnt_vel
-        )
+        selftouch_kwargs = {
+            "selftouch_hand_jnt_pos": selftouch_hand_jnt_pos,
+            "selftouch_hand_jnt_vel": selftouch_hand_jnt_vel,
+            "selftouch_hand_jnt_trq": selftouch_hand_jnt_trq,
+            "selftouch_hand_jnt_cmd_pos": selftouch_hand_jnt_cmd_pos,
+            "selftouch_tactile_index_tip": selftouch_tactile_index_tip,
+            "selftouch_tactile_thumb_tip": selftouch_tactile_thumb_tip,
+            "selftouch_tactile_middle_tip": selftouch_tactile_middle_tip,
+            "selftouch_tactile_ring_tip": selftouch_tactile_ring_tip,
+            "selftouch_combo": selftouch_combo,
+            "selftouch_phase": selftouch_phase,
+        }
+        condition_steps = self._trajectory_condition_steps(streams)
+        if condition_steps > 0:
+            if self.arch != "act":
+                raise ValueError("trajectory_condition_steps currently requires dexwild_arch: act")
+            obs_streams = self._slice_temporal_mapping(streams, condition_steps)
+            obs_selftouch_kwargs = self._slice_temporal_mapping(
+                selftouch_kwargs,
+                condition_steps,
+            )
+            obs = self._build_obs(
+                obs_streams,
+                noise=noise,
+                drop_last=False,
+                **obs_selftouch_kwargs,
+            )
+        else:
+            obs = self._build_obs(
+                streams,
+                noise=noise,
+                drop_last=True,
+                **selftouch_kwargs,
+            )
+        target_actions = self._target_actions(streams)
         pred_actions, aux = self.policy(obs, target_actions)
+        preds = self._split(pred_actions)
 
-        idx_preds, thumb_preds, pos_preds, vel_preds = self._split(pred_actions)
         mask = data_found[:, 1:]
-        loss_idx = _masked_mse(idx_preds, tactile_index_tip[:, 1:], mask)
-        loss_thumb = _masked_mse(thumb_preds, tactile_thumb_tip[:, 1:], mask)
-        loss_pos = _masked_mse(pos_preds, hand_jnt_pos[:, 1:], mask)
-        loss_vel = _masked_mse(vel_preds, hand_jnt_vel[:, 1:], mask)
-
-        total_loss = (
-            loss_idx * loss_coef.get("tactile_index_tip", 1.0)
-            + loss_thumb * loss_coef.get("tactile_thumb_tip", 1.0)
-            + loss_pos * loss_coef.get("hand_jnt_pos", 1.0)
-            + loss_vel * loss_coef.get("hand_jnt_vel", 1.0)
-        )
+        loss_coef = loss_coef or {}
+        component_losses = []
+        total_loss = pred_actions.new_tensor(0.0)
+        for key in self.output_keys:
+            target = self._stream_sequence(streams, key)[:, 1:]
+            loss = _masked_mse(preds[key], target, mask)
+            component_losses.append(loss)
+            total_loss = total_loss + loss * float(loss_coef.get(key, 1.0))
         if "noise_pred" in aux:
             diffusion_loss = _masked_mse(aux["noise_pred"], aux["noise"], mask)
             total_loss = total_loss + diffusion_loss * float(
                 self.param.get("diffusion_loss_coef", 0.1)
             )
 
-        return (
-            total_loss,
-            loss_idx,
-            loss_thumb,
-            loss_pos,
-            loss_vel,
-        ), (idx_preds, thumb_preds, pos_preds, vel_preds)
+        return (total_loss, *component_losses), preds
+
+    def forward_sequence(self, output_steps=None, **kwargs):
+        selftouch_kwargs = {
+            key: kwargs.pop(key)
+            for key in list(kwargs.keys())
+            if key.startswith("selftouch_")
+        }
+        streams = self._motion_streams_from_args(**kwargs)
+        condition_steps = self._trajectory_condition_steps(streams)
+        if condition_steps > 0:
+            if self.arch != "act":
+                raise ValueError("trajectory_condition_steps currently requires dexwild_arch: act")
+            streams = self._slice_temporal_mapping(streams, condition_steps)
+            selftouch_kwargs = self._slice_temporal_mapping(
+                selftouch_kwargs,
+                condition_steps,
+            )
+            obs = self._build_obs(streams, drop_last=False, **selftouch_kwargs)
+            if output_steps is None:
+                output_steps = max(1, int(self.param.get("sequence_length", obs.shape[1])) - 1)
+        else:
+            obs = self._build_obs(streams, drop_last=True, **selftouch_kwargs)
+        pred_actions, _ = self.policy(obs, None, output_steps=output_steps)
+        return self._split(pred_actions)
 
     def forward(
         self,
-        tactile_index_tip_t,
-        tactile_thumb_tip_t,
-        hand_jnt_pos_t,
+        tactile_index_tip_t=None,
+        tactile_thumb_tip_t=None,
+        hand_jnt_pos_t=None,
         hand_jnt_vel_t=None,
         **kwargs,
     ):
-        if tactile_index_tip_t.dim() == 2:
-            tactile_index_tip_t = tactile_index_tip_t[:, None]
-            tactile_thumb_tip_t = tactile_thumb_tip_t[:, None]
-            hand_jnt_pos_t = hand_jnt_pos_t[:, None]
-            if hand_jnt_vel_t is not None:
-                hand_jnt_vel_t = hand_jnt_vel_t[:, None]
-        if hand_jnt_vel_t is None:
-            hand_jnt_vel_t = torch.zeros_like(hand_jnt_pos_t)
-        obs = torch.cat(
-            [tactile_index_tip_t, tactile_thumb_tip_t, hand_jnt_pos_t],
-            dim=-1,
-        )
-        if self.use_velocity_input:
-            obs = torch.cat([obs, hand_jnt_vel_t], dim=-1)
-        pred_actions, _ = self.policy(obs, None)
-        return self._split(pred_actions[:, -1])
+        selftouch_kwargs = {
+            key: kwargs.pop(key)
+            for key in list(kwargs.keys())
+            if key.startswith("selftouch_")
+        }
+        legacy_streams = {
+            "tactile_index_tip": tactile_index_tip_t,
+            "tactile_thumb_tip": tactile_thumb_tip_t,
+            "hand_jnt_pos": hand_jnt_pos_t,
+            "hand_jnt_vel": hand_jnt_vel_t,
+        }
+        for key, value in legacy_streams.items():
+            if value is not None:
+                if key in kwargs and kwargs[key] is not None:
+                    raise ValueError(f"Motion stream '{key}' was provided twice")
+                kwargs[key] = value
 
+        streams = self._motion_streams_from_args(**kwargs)
+        parts = []
+        for key in self.tactile_keys:
+            parts.append(self._stream_sequence(streams, key))
+        for key in self.joint_state_keys:
+            parts.append(self._stream_sequence(streams, key))
+        obs = torch.cat(parts, dim=-1)
+
+        st_features = self._selftouch_features(streams, **selftouch_kwargs)
+        if st_features is not None:
+            target_len = obs.shape[1]
+            obs = torch.cat(
+                [obs]
+                + [
+                    _fit_timesteps(st_features[key], target_len)
+                    for key in self.selftouch_feature_keys
+                ],
+                dim=-1,
+            )
+        pred_actions, _ = self.policy(obs, None)
+        return {key: value[:, -1] for key, value in self._split(pred_actions).items()}

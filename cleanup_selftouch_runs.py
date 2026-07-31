@@ -8,7 +8,7 @@ from pathlib import Path
 import yaml
 
 
-VARIANTS = [
+INPUT_ABLATION_VARIANTS = [
     "selftouch_fcn_pos",
     "selftouch_fcn_vel",
     "selftouch_fcn_trq",
@@ -23,6 +23,9 @@ VARIANTS = [
     "selftouch_fcn_postrqcmd",
     "selftouch_fcn_poscmdvel",
     "selftouch_fcn_posveltrqcmd",
+]
+
+TIMESTEP_ABLATION_VARIANTS = [
     "selftouch_fcn_postrqcmd_tplus10",
     "selftouch_fcn_postrqcmd_tplus5",
     "selftouch_fcn_postrqcmd_tplus2",
@@ -37,9 +40,58 @@ VARIANTS = [
     "selftouch_fcn_pos_tplus10",
 ]
 
+LEGACY_POS_TRQ_BACKBONE_VARIANTS = [
+    "selftouch_fcn",
+    "selftouch_transformer",
+    "selftouch_gru_attention",
+    "selftouch_temporal_mixer",
+    "selftouch_contrastive_fcn",
+    "selftouch_contrastive_transformer",
+    "selftouch_contrastive_gru",
+    "selftouch_contrastive_temporal",
+]
 
-def load_entity(root):
-    for variant in VARIANTS:
+POS_TRQ_BACKBONE_VARIANTS = [
+    "selftouch_gru_attention",
+    "selftouch_temporal_mixer",
+    "selftouch_fcn",
+    "selftouch_transformer",
+    "selftouch_mamba",
+    "selftouch_contrastive_gru",
+    "selftouch_contrastive_temporal",
+    "selftouch_contrastive_fcn",
+    "selftouch_contrastive_transformer",
+    "selftouch_contrastive_mamba",
+]
+
+VARIANT_SETS = {
+    "pos-trq": POS_TRQ_BACKBONE_VARIANTS,
+    "legacy-pos-trq": LEGACY_POS_TRQ_BACKBONE_VARIANTS,
+    "input-ablation": INPUT_ABLATION_VARIANTS,
+    "timestep-ablation": TIMESTEP_ABLATION_VARIANTS,
+    "all": sorted(
+        set(
+            POS_TRQ_BACKBONE_VARIANTS
+            + LEGACY_POS_TRQ_BACKBONE_VARIANTS
+            + INPUT_ABLATION_VARIANTS
+            + TIMESTEP_ABLATION_VARIANTS
+        )
+    ),
+}
+
+
+def selected_variants(args):
+    variants = [] if args.only_variant else list(VARIANT_SETS[args.variant_set])
+    for variant in args.variant or []:
+        if variant not in variants:
+            variants.append(variant)
+    if args.only_variant and not variants:
+        raise SystemExit("Pass at least one --variant when using --only-variant.")
+    return variants
+
+
+def load_entity(root, variants):
+    for variant in variants:
         path = root / "parameter" / variant / "parameter_base" / "parameter_base.yaml"
         if not path.is_file():
             continue
@@ -66,10 +118,10 @@ def remove_path(path, dry_run=False):
     return True
 
 
-def cleanup_generated_dirs(root, dry_run=False):
+def cleanup_generated_dirs(root, variants, dry_run=False):
     removed = 0
     for top_name in ("parameter", "model_weight"):
-        for variant in VARIANTS:
+        for variant in variants:
             base = root / top_name / variant
             if not base.is_dir():
                 continue
@@ -80,10 +132,22 @@ def cleanup_generated_dirs(root, dry_run=False):
     return removed
 
 
-def marker_strings():
-    markers = set(VARIANTS)
-    markers.update(f"parameter/{variant}/" for variant in VARIANTS)
-    markers.update(f"model_weight/{variant}/" for variant in VARIANTS)
+def cleanup_base_scalers(root, variants, dry_run=False):
+    removed = 0
+    for variant in variants:
+        removed += int(
+            remove_path(
+                root / "parameter" / variant / "parameter_base" / "scaling_param.pkl",
+                dry_run=dry_run,
+            )
+        )
+    return removed
+
+
+def marker_strings(variants):
+    markers = set(variants)
+    markers.update(f"parameter/{variant}/" for variant in variants)
+    markers.update(f"model_weight/{variant}/" for variant in variants)
     return tuple(sorted(markers))
 
 
@@ -108,11 +172,11 @@ def tree_contains_marker(path, markers):
     return False
 
 
-def cleanup_local_wandb(root, dry_run=False):
+def cleanup_local_wandb(root, variants, dry_run=False):
     wandb_root = root / "wandb"
     if not wandb_root.exists():
         return 0
-    markers = marker_strings()
+    markers = marker_strings(variants)
     removed = 0
     for child in sorted(wandb_root.iterdir()):
         if child.name.startswith(("run-", "offline-run-", "sweep-")):
@@ -126,7 +190,14 @@ def cleanup_local_wandb(root, dry_run=False):
 
 
 def cleanup_logs(root, dry_run=False):
-    return int(remove_path(root / "logs" / "selftouch_fcn_variants", dry_run=dry_run))
+    removed = 0
+    for name in (
+        "selftouch_fcn_variants",
+        "selftouch_pos_trq_backbone_matrix",
+        "selftouch_8_pos_trq",
+    ):
+        removed += int(remove_path(root / "logs" / name, dry_run=dry_run))
+    return removed
 
 
 def delete_wandb_project(api, entity, project):
@@ -156,19 +227,39 @@ def delete_wandb_project(api, entity, project):
         from wandb_gql import gql
 
         result = api.client.execute(gql(mutation), variable_values=variables)
-    success = result.get("deleteModel", {}).get("success")
+    if result is None:
+        return
+    delete_payload = result.get("deleteModel")
+    if delete_payload is None:
+        return
+    success = delete_payload.get("success")
     if not success:
         raise RuntimeError(f"W&B project delete failed for {entity}/{project}: {result}")
 
 
-def cleanup_wandb_online(entity, delete_projects=False, delete_artifacts=False, dry_run=False):
+def is_missing_wandb_project_error(exc):
+    text = str(exc).lower()
+    return any(
+        marker in text
+        for marker in (
+            "404",
+            "not found",
+            "does not exist",
+            "not exist",
+            "could not find",
+            "entity or project",
+        )
+    )
+
+
+def cleanup_wandb_online(entity, variants, delete_projects=False, delete_artifacts=False, dry_run=False):
     import wandb
 
     api = wandb.Api()
     deleted_runs = 0
     deleted_projects = 0
     failures = []
-    for project in VARIANTS:
+    for project in variants:
         path = f"{entity}/{project}"
         if delete_projects:
             print(f"{'would delete' if dry_run else 'deleting'} W&B project {path}")
@@ -176,6 +267,9 @@ def cleanup_wandb_online(entity, delete_projects=False, delete_artifacts=False, 
                 try:
                     delete_wandb_project(api, entity, project)
                 except Exception as exc:
+                    if is_missing_wandb_project_error(exc):
+                        print(f"  no W&B project found for {path}; already clean")
+                        continue
                     failures.append((path, str(exc)))
                     print(f"  FAILED {path}: {exc}", file=sys.stderr)
                     continue
@@ -186,6 +280,9 @@ def cleanup_wandb_online(entity, delete_projects=False, delete_artifacts=False, 
         try:
             runs = list(api.runs(path))
         except Exception as exc:
+            if is_missing_wandb_project_error(exc):
+                print(f"  no W&B project found for {path}; no runs to delete")
+                continue
             failures.append((path, str(exc)))
             print(f"  skipped {path}: {exc}", file=sys.stderr)
             continue
@@ -198,8 +295,21 @@ def cleanup_wandb_online(entity, delete_projects=False, delete_artifacts=False, 
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Delete local and optional W&B selftouch FCN run artifacts.")
+    parser = argparse.ArgumentParser(description="Delete local and optional W&B self-touch run artifacts.")
     parser.add_argument("--root", default=".", help="motionlearning repo root")
+    parser.add_argument(
+        "--variant-set",
+        choices=sorted(VARIANT_SETS),
+        default="pos-trq",
+        help="named group of projects to delete; default is the pos+trq backbone matrix",
+    )
+    parser.add_argument(
+        "--variant",
+        action="append",
+        default=[],
+        help="additional project/variant name to include; can be passed more than once",
+    )
+    parser.add_argument("--only-variant", action="store_true", help="delete only variants passed with --variant")
     parser.add_argument("--wandb", action="store_true", help="also delete online W&B runs/projects")
     parser.add_argument("--delete-projects", action="store_true", help="with --wandb, delete the configured W&B projects themselves")
     parser.add_argument("--delete-artifacts", action="store_true", help="with --wandb run deletion, also delete run artifacts")
@@ -212,11 +322,15 @@ def main():
     if not args.dry_run and not args.yes:
         raise SystemExit("Refusing to delete without --yes. Use --dry-run to preview.")
 
-    entity = args.entity or load_entity(root)
+    variants = selected_variants(args)
+    print(f"variant_set={args.variant_set} variants={variants}")
+    entity = args.entity or load_entity(root, variants)
     local_count = 0
-    local_count += cleanup_generated_dirs(root, dry_run=args.dry_run)
-    local_count += cleanup_local_wandb(root, dry_run=args.dry_run)
-    local_count += cleanup_logs(root, dry_run=args.dry_run)
+    local_count += cleanup_generated_dirs(root, variants, dry_run=args.dry_run)
+    local_count += cleanup_base_scalers(root, variants, dry_run=args.dry_run)
+    local_count += cleanup_local_wandb(root, variants, dry_run=args.dry_run)
+    if not args.only_variant:
+        local_count += cleanup_logs(root, dry_run=args.dry_run)
     print(f"local_removed={local_count}")
 
     if args.wandb:
@@ -224,6 +338,7 @@ def main():
             raise SystemExit("W&B entity not found; pass --entity.")
         runs, projects, failures = cleanup_wandb_online(
             entity,
+            variants,
             delete_projects=args.delete_projects,
             delete_artifacts=args.delete_artifacts,
             dry_run=args.dry_run,

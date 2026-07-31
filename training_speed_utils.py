@@ -161,6 +161,12 @@ def wandb_init_kwargs(mode_param, project=None, config=None):
         kwargs["config"] = config
     if mode_param.get("run_name"):
         kwargs["name"] = str(mode_param["run_name"])
+    if mode_param.get("tags"):
+        kwargs["tags"] = [str(tag) for tag in mode_param["tags"]]
+    if mode_param.get("group"):
+        kwargs["group"] = str(mode_param["group"])
+    if mode_param.get("job_type"):
+        kwargs["job_type"] = str(mode_param["job_type"])
     kwargs["settings"] = wandb_service_settings()
     return kwargs
 

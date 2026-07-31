@@ -87,6 +87,7 @@ class MainExectutor:
         self.model_param = params["Model"]
         self.config=config
         self.dataset_param = params["Dataset"]
+        self.model_param.setdefault("sequence_length", self.dataset_param.get("sequence_length"))
         self.required_param = params["Required"]
         self.sync_input_offset(params)
         base_model_save_path = self.get_model_save_path(param_file)
@@ -164,13 +165,27 @@ class MainExectutor:
 
     def sweep(self):
         self._sweep_interrupted = False
-        init_kwargs = {"project": self.params["Sweep"]["project"]}
+        sweep_params = self.params.get("Sweep", {})
+        train_params = self.params.get("Train", {})
+        init_kwargs = {"project": sweep_params["project"]}
         entity = get_wandb_entity(self.params.get("Sweep"), self.params.get("Train"), self.params.get("Pretrain"))
         if entity:
             init_kwargs["entity"] = entity
+        run_name, model_save_path, param_file_dir = self.reserve_sweep_run_paths(sweep_params)
+        self.current_sweep_run_name = run_name
+        self.current_sweep_model_save_path = model_save_path
+        self.current_sweep_param_file_dir = param_file_dir
+        if run_name:
+            init_kwargs["name"] = run_name
+            init_kwargs["config"] = dict(init_kwargs.get("config", {}), run_name=run_name)
+        if sweep_params.get("group"):
+            init_kwargs["group"] = str(sweep_params["group"])
+        if sweep_params.get("tags"):
+            init_kwargs["tags"] = [str(tag) for tag in sweep_params["tags"]]
         if getattr(self, "sweep_run_config", None):
-            init_kwargs["config"] = self.sweep_run_config
-            init_kwargs["tags"] = ["fixed-sweep", "selftouch-fcn"]
+            init_kwargs["config"] = dict(self.sweep_run_config, **init_kwargs.get("config", {}))
+            init_kwargs["tags"] = list(init_kwargs.get("tags", [])) + ["fixed-sweep"]
+        print(f"[sweep] Output run directory: {run_name}")
         run = wandb.init(settings=wandb_service_settings(), **init_kwargs)
         completed = False
         try:
@@ -331,16 +346,73 @@ class MainExectutor:
             random.shuffle(configs)
         return configs or [{}]
 
+    def reserve_sweep_run_paths(self, sweep_params):
+        numbered = bool(sweep_params.get("numbered_run_dirs", True))
+        model_root = os.path.dirname(self.model_param["model_save_path"])
+        param_root = os.path.dirname(os.path.dirname(self.param_file))
+        model_name = str(self.model_param.get("model_name") or os.path.basename(model_root))
+
+        if numbered:
+            pattern = re.compile(rf"^{re.escape(model_name)}_(\d+)$")
+            indices = []
+            for root in (model_root, param_root):
+                if not os.path.isdir(root):
+                    continue
+                for name in os.listdir(root):
+                    match = pattern.fullmatch(name)
+                    if match:
+                        indices.append(int(match.group(1)))
+
+            index = max(indices, default=0) + 1
+            while True:
+                run_name = f"{model_name}_{index:03d}"
+                model_save_path = os.path.join(model_root, run_name)
+                param_file_dir = os.path.join(param_root, run_name)
+                if not os.path.exists(model_save_path) and not os.path.exists(param_file_dir):
+                    os.makedirs(model_save_path, exist_ok=False)
+                    os.makedirs(param_file_dir, exist_ok=False)
+                    return run_name, model_save_path, param_file_dir
+                index += 1
+
+        run_name = str(sweep_params.get("run_name") or self.params.get("Train", {}).get("run_name") or model_name)
+        model_save_path = os.path.join(model_root, run_name)
+        param_file_dir = os.path.join(param_root, run_name)
+        os.makedirs(model_save_path, exist_ok=True)
+        os.makedirs(param_file_dir, exist_ok=True)
+        return run_name, model_save_path, param_file_dir
+
     def sweep_config_saver(self,run):
         config = getattr(self, "sweep_run_config", None) or run.config
-        self.model_param["model_save_path"]=os.path.join(os.path.dirname(self.model_param["model_save_path"]),run.name)
-        self.dataset_param["param_file_dir"]=os.path.join(util.change_dir_name_in_path(os.path.dirname(self.param_file),"parameter_base",run.name))
         self.model_param=util.update_nested_dict(self.model_param,config)
         self.dataset_param=util.update_nested_dict(self.dataset_param,config)
         self.params=util.update_nested_dict(self.params,config)
         self.model_param = dp.localize_legacy_paths(self.model_param)
         self.dataset_param = dp.localize_legacy_paths(self.dataset_param)
         self.params = dp.localize_legacy_paths(self.params)
+        run_name = getattr(self, "current_sweep_run_name", run.name)
+        self.model_param["model_save_path"] = getattr(
+            self,
+            "current_sweep_model_save_path",
+            os.path.join(os.path.dirname(self.model_param["model_save_path"]), run_name),
+        )
+        self.dataset_param["param_file_dir"] = getattr(
+            self,
+            "current_sweep_param_file_dir",
+            os.path.join(util.change_dir_name_in_path(os.path.dirname(self.param_file), "parameter_base", run_name)),
+        )
+        self.params.setdefault("Experiment", {})["run_name"] = run_name
+        self.params.setdefault("Train", {})["run_name"] = run_name
+        self.params.setdefault("Sweep", {})["run_name"] = run_name
+        self.params["Model"] = self.model_param
+        self.params["Dataset"] = self.dataset_param
+        self.model_param["sequence_length"] = self.dataset_param.get("sequence_length")
+        checkpoint_name = f"epoch{int(self.params.get('Train', {}).get('num_epochs', 1)) - 1}.pth"
+        for section in ("Test", "Motion"):
+            if section in self.params:
+                self.params[section]["model_load_path"] = os.path.join(
+                    self.model_param["model_save_path"],
+                    checkpoint_name,
+                )
         print(f"[path] Sweep Dataset.data_dir={self.dataset_param.get('data_dir')}")
         os.makedirs(self.dataset_param["param_file_dir"], exist_ok=True)
         dp.write_yaml(self.params,os.path.join(self.dataset_param["param_file_dir"],"parameter.yaml"))

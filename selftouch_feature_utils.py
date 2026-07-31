@@ -3,6 +3,12 @@ from torch import nn
 
 
 DEFAULT_TACTILE_HISTORY_FINGERS = ("index", "thumb", "middle", "ring")
+JOINT_MODALITIES = (
+    "hand_jnt_pos",
+    "hand_jnt_vel",
+    "hand_jnt_trq",
+    "hand_jnt_cmd_pos",
+)
 
 
 def _positive_int(value, default=1):
@@ -21,11 +27,46 @@ def _finger_names(fingers=None):
     return tuple(fingers)
 
 
+def _joint_modalities(input_modalities=None):
+    if input_modalities is None:
+        return None
+    if isinstance(input_modalities, str):
+        input_modalities = (
+            part.strip() for part in input_modalities.split(",") if part.strip()
+        )
+    modalities = tuple(input_modalities)
+    if not modalities:
+        raise ValueError("input_modalities must contain at least one joint stream")
+    unknown = [name for name in modalities if name not in JOINT_MODALITIES]
+    if unknown:
+        raise ValueError(
+            "Unsupported joint input modality/modalities: " + ", ".join(unknown)
+        )
+    return modalities
+
+
+def labels_from_selftouch_combo(selftouch_combo):
+    """Convert a one-hot self-touch combination stream into class labels."""
+    if selftouch_combo is None:
+        return None
+    if not torch.is_tensor(selftouch_combo):
+        selftouch_combo = torch.as_tensor(selftouch_combo)
+    if selftouch_combo.ndim < 2 or selftouch_combo.shape[-1] < 1:
+        return None
+    combo = selftouch_combo.float()
+    if combo.ndim >= 3:
+        combo = combo.mean(dim=1)
+    elif combo.ndim > 2:
+        combo = combo.reshape(combo.shape[0], -1, combo.shape[-1]).mean(dim=1)
+    return combo.argmax(dim=-1).long()
+
+
 def joint_feature_dim(
     hand_dim,
     use_derived_features=False,
     use_joint_pos_only=False,
     *,
+    input_modalities=None,
     temporal_window_steps=1,
     tactile_dim=90,
     use_tactile_history=False,
@@ -33,7 +74,12 @@ def joint_feature_dim(
     tactile_history_fingers=None,
 ):
     """Return input width for the joint-state feature vector."""
-    if use_joint_pos_only:
+    modalities = _joint_modalities(input_modalities)
+    if modalities is not None:
+        base_dim = int(hand_dim) * len(modalities)
+        if use_derived_features:
+            base_dim += int(hand_dim) * 4
+    elif use_joint_pos_only:
         base_dim = int(hand_dim)
     else:
         base_dim = int(hand_dim) * (8 if use_derived_features else 4)
@@ -159,6 +205,7 @@ def build_joint_features(
     tactile_history_steps=1,
     tactile_history_fingers=None,
     tactile_dim=90,
+    input_modalities=None,
     tactile_index_tip=None,
     tactile_thumb_tip=None,
     tactile_middle_tip=None,
@@ -169,7 +216,37 @@ def build_joint_features(
     The derived features use only joint state at or before each timestep:
     command error, torque delta, velocity delta, and absolute torque.
     """
-    if use_joint_pos_only:
+    modalities = _joint_modalities(input_modalities)
+    if modalities is not None:
+        streams = {
+            "hand_jnt_pos": hand_jnt_pos,
+            "hand_jnt_vel": hand_jnt_vel,
+            "hand_jnt_trq": hand_jnt_trq,
+            "hand_jnt_cmd_pos": hand_jnt_cmd_pos,
+        }
+        missing = [name for name in modalities if streams.get(name) is None]
+        if missing:
+            raise KeyError(
+                "Missing required joint input modality/modalities: "
+                + ", ".join(missing)
+            )
+        features = torch.cat([streams[name] for name in modalities], dim=-1)
+        if use_derived_features:
+            zeros = torch.zeros_like(hand_jnt_pos)
+            hand_jnt_vel = zeros if hand_jnt_vel is None else hand_jnt_vel
+            hand_jnt_trq = zeros if hand_jnt_trq is None else hand_jnt_trq
+            hand_jnt_cmd_pos = zeros if hand_jnt_cmd_pos is None else hand_jnt_cmd_pos
+            features = torch.cat(
+                [
+                    features,
+                    hand_jnt_cmd_pos - hand_jnt_pos,
+                    _causal_delta(hand_jnt_trq),
+                    _causal_delta(hand_jnt_vel),
+                    hand_jnt_trq.abs(),
+                ],
+                dim=-1,
+            )
+    elif use_joint_pos_only:
         features = hand_jnt_pos
     else:
         zeros = torch.zeros_like(hand_jnt_pos)
