@@ -103,7 +103,7 @@ def summarize(variant: str, path: Path, rows: List[Dict[str, str]]) -> tuple[Dic
     checkpoint_epochs = []
     for checkpoint in run_dir.glob("epoch*.pth"):
         try:
-            checkpoint_epochs.append((int(checkpoint.stem.removeprefix("epoch")) + 1, checkpoint))
+            checkpoint_epochs.append((int(checkpoint.stem.replace("epoch", "", 1)) + 1, checkpoint))
         except ValueError:
             continue
     exact_checkpoint = next(
@@ -192,7 +192,8 @@ def write_csv(path: Path, rows: List[Dict]) -> None:
 
 
 def short_name(variant: str) -> str:
-    return variant.removeprefix("selftouch_fcn_")
+    prefix = "selftouch_fcn_"
+    return variant[len(prefix):] if variant.startswith(prefix) else variant
 
 
 def make_plots(out_dir: Path, summaries: List[Dict], finger_rows: List[Dict], histories: Dict[str, List[Dict]]) -> None:
@@ -245,7 +246,8 @@ def make_plots(out_dir: Path, summaries: List[Dict], finger_rows: List[Dict], hi
     fig, ax = plt.subplots(figsize=(15, 7), constrained_layout=True)
     ax.bar(x - 0.2, best_values, width=0.4, label="best checkpoint", color="#3f7fba")
     ax.bar(x + 0.2, final_values, width=0.4, label="epoch 500", color="#ff9b73")
-    ax.set_xticks(x, labels, rotation=42, ha="right")
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=42, ha="right")
     ax.set_ylabel("Raw taxel MAE")
     ax.set_title("Best versus final validation MAE")
     ax.grid(True, axis="y", alpha=0.25)
@@ -264,8 +266,10 @@ def make_plots(out_dir: Path, summaries: List[Dict], finger_rows: List[Dict], hi
         ], dtype=np.float64)
         fig, ax = plt.subplots(figsize=(8, 9), constrained_layout=True)
         image = ax.imshow(matrix, aspect="auto", cmap=cmap)
-        ax.set_xticks(np.arange(len(FINGERS)), [name.capitalize() for name in FINGERS])
-        ax.set_yticks(np.arange(len(ordered)), labels)
+        ax.set_xticks(np.arange(len(FINGERS)))
+        ax.set_xticklabels([name.capitalize() for name in FINGERS])
+        ax.set_yticks(np.arange(len(ordered)))
+        ax.set_yticklabels(labels)
         ax.set_title(title)
         for i in range(matrix.shape[0]):
             for j in range(matrix.shape[1]):

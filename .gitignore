@@ -22,6 +22,7 @@ data_server/
 *.tiff
 *.svg
 model_weight/
+analysis/
 
 # Weights & Biases local runs/logs
 wandb/
