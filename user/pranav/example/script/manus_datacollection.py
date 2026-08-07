@@ -131,8 +131,8 @@ from py_node_exec import NodeExec
 from allegro_package import AllegroHand
 from xela_py import TactileSubscriber
 
-DATA_DIR = "/home/handlingteam2/HASA/user/pranav/example/data/selftouch/index_middle"
-MAX_TIMESTEP = 400
+DATA_DIR = "/home/handlingteam2/HASA/user/pranav/example/data/tasks/sponge"
+MAX_TIMESTEP = 100
 CTRL_FREQ = 10.0
 HAND_TOPIC_PREFIX = "allegroHand_0"
 TACTILE_TOPIC_PREFIXES = ["thumb_tip", "index_tip", "middle_tip", "ring_tip"]
