@@ -46,6 +46,7 @@ class XelAllegro:
         self._direct_effort_cmd = None
         self._direct_effort_lock = Lock()
         self._direct_effort_timer = None
+        self._closed = False
         for prefix in tactile_topic_prefix:
             self._tactile_sensors[prefix] = TactileSubscriber(topic_prefix=prefix)
 
@@ -64,6 +65,8 @@ class XelAllegro:
 
     def _publish_direct_effort_cmd(self, event=None):
         del event
+        if self._closed or rospy.is_shutdown():
+            return
         with self._direct_effort_lock:
             effort = None if self._direct_effort_cmd is None else self._direct_effort_cmd.copy()
         with self._hand.lock:
@@ -82,7 +85,10 @@ class XelAllegro:
         msg.position = list(position)
         if effort is not None:
             msg.effort = list(effort)
-        self._hand.pub_joint_cmd.publish(msg)
+        try:
+            self._hand.pub_joint_cmd.publish(msg)
+        except rospy.ROSException:
+            return
 
     def set_jnt_cmd(self, cmd: np.ndarray, effort: np.ndarray = None):
         if not isinstance(cmd, np.ndarray):
@@ -112,6 +118,16 @@ class XelAllegro:
 
     def torque_off(self):
         self._hand.torque_off()
+
+    def close(self):
+        self._closed = True
+        if self._direct_effort_timer is not None:
+            self._direct_effort_timer.shutdown()
+            self._direct_effort_timer = None
+        if hasattr(self._hand, "timer") and self._hand.timer is not None:
+            self._hand.timer.shutdown()
+        with self._hand.lock:
+            self._hand.interpolated_jnt_cmds = None
 
     def wait_for_cmd_connection(self, timeout_sec: float = 5.0, poll_sec: float = 0.1) -> bool:
         deadline = time.time() + timeout_sec
@@ -147,15 +163,22 @@ class XelAllegro:
             self.set_jnt_cmd(_HOME_POSE)
             time.sleep(1)
 
-    def move_to_ready_pose(self, duration: float = 3.0):
-        """Smoothly interpolate from current position to the rugby ready pose."""
+    def move_to_ready_pose(self, ready_pose=None, duration: float = 3.0):
+        """Smoothly interpolate from current position to the configured ready pose."""
+        target_pose = (
+            np.asarray(ready_pose, dtype=np.float32)
+            if ready_pose is not None
+            else _READY_POSE
+        )
+        if target_pose.shape != (16,):
+            raise ValueError("ready_pose must contain 16 joint values")
         current = np.array(self._hand.get_obs()["jnt_pos"], dtype=np.float32)
         n_steps = int(duration * self._ctrl_freq)
         dt = 1.0 / self._ctrl_freq
         print("Moving to ready pose...")
         for i in range(1, n_steps + 1):
             alpha = i / n_steps
-            cmd = (1.0 - alpha) * current + alpha * _READY_POSE
+            cmd = (1.0 - alpha) * current + alpha * target_pose
             self.set_jnt_cmd(cmd)
             time.sleep(dt)
         print("Ready pose reached.")

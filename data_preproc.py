@@ -163,8 +163,33 @@ def resolve_test_episode_names(episode_names, dataset_param, key="test_data"):
 
     raise ValueError(f"Unsupported test_split_policy: {dataset_param.get('test_split_policy')}")
 
+
+def filtered_dir_names(data_param):
+    dir_list = get_dir_name(data_param["data_dir"])
+
+    include_names = data_param.get("include_episodes")
+    if include_names is not None:
+        include_names = _resolve_episode_name_set(dir_list, include_names)
+        missing_include = sorted(include_names - set(dir_list))
+        if missing_include:
+            raise ValueError(
+                "Dataset.include_episodes contains episodes not found in data_dir: "
+                + ", ".join(missing_include[:10])
+            )
+        dir_list = [name for name in dir_list if name in include_names]
+
+    exclude_names = data_param.get("exclude_episodes")
+    if exclude_names is not None:
+        exclude_names = _resolve_episode_name_set(dir_list, exclude_names)
+        dir_list = [name for name in dir_list if name not in exclude_names]
+
+    if not dir_list:
+        raise ValueError(f"No episode directories selected in {data_param['data_dir']}")
+
+    return dir_list
+
 def cached_dir(data_param):
-    dir_list=get_dir_name(data_param["data_dir"])
+    dir_list=filtered_dir_names(data_param)
     total_data={}
     for dir in dir_list:
         total_data[dir]="./.cache/data_{}.pkl".format(dir)
@@ -310,7 +335,7 @@ def process_dir_single(dir, data_param, file_list, mem):
     
 def get_sequence_dict_single(data_param, mem="rom"):
     data_param = _localize_legacy_paths(copy.deepcopy(data_param))
-    dir_list = get_dir_name(data_param["data_dir"])
+    dir_list = filtered_dir_names(data_param)
     file_list = _sequence_file_list(data_param, dir_list)
 
     total_data = {}
@@ -326,7 +351,7 @@ def get_sequence_dict_single(data_param, mem="rom"):
 
 def get_sequence_dict(data_param,mem="rom",proc_num=4):
     data_param = _localize_legacy_paths(copy.deepcopy(data_param))
-    dir_list=get_dir_name(data_param["data_dir"])
+    dir_list=filtered_dir_names(data_param)
     file_list=_sequence_file_list(data_param, dir_list)
     
     total_data={}
