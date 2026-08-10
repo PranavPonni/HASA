@@ -3,11 +3,14 @@ ensure_ros_workspace_paths()
 
 from allegro_package import AllegroHand
 from xela_py import TactileSubscriber
+from sensor_msgs.msg import JointState
 import numpy as np
 import time
 import sys
 import os
 import torch
+import rospy
+from threading import Lock
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import data_preproc as dp
 
@@ -39,16 +42,67 @@ class XelAllegro:
         )
         self._ctrl_freq = ctrl_freq
         self._tactile_sensors = {}
+        self._direct_effort_mode = False
+        self._direct_effort_cmd = None
+        self._direct_effort_lock = Lock()
+        self._direct_effort_timer = None
         for prefix in tactile_topic_prefix:
             self._tactile_sensors[prefix] = TactileSubscriber(topic_prefix=prefix)
 
-    def set_jnt_cmd(self, cmd: np.ndarray):
+    def _ensure_direct_effort_mode(self):
+        if self._direct_effort_mode:
+            return
+        if hasattr(self._hand, "timer"):
+            self._hand.timer.shutdown()
+        low_level_freq = float(getattr(self._hand, "low_level_freq", 100.0))
+        self._direct_effort_timer = rospy.Timer(
+            rospy.Duration(1.0 / low_level_freq),
+            self._publish_direct_effort_cmd,
+        )
+        self._direct_effort_mode = True
+        print("[torque] direct JointState.effort command publisher enabled")
 
+    def _publish_direct_effort_cmd(self, event=None):
+        del event
+        with self._direct_effort_lock:
+            effort = None if self._direct_effort_cmd is None else self._direct_effort_cmd.copy()
+        with self._hand.lock:
+            if self._hand.interpolated_jnt_cmds is not None:
+                position = self._hand.interpolated_jnt_cmds[0].copy()
+                if self._hand.interpolated_jnt_cmds.shape[0] > 1:
+                    self._hand.interpolated_jnt_cmds = self._hand.interpolated_jnt_cmds[1:].copy()
+            else:
+                position = self._hand._jnt_cmd_pos
+                if position is None:
+                    position = self._hand._jnt_pos
+                if position is None:
+                    return
+                position = np.asarray(position, dtype=np.float32).copy()
+        msg = JointState()
+        msg.position = list(position)
+        if effort is not None:
+            msg.effort = list(effort)
+        self._hand.pub_joint_cmd.publish(msg)
+
+    def set_jnt_cmd(self, cmd: np.ndarray, effort: np.ndarray = None):
         if not isinstance(cmd, np.ndarray):
             raise TypeError("cmd must be a numpy.ndarray.")
         if cmd.shape != (16,):
             raise ValueError("cmd must have shape (16,).")
+        if effort is None and not self._direct_effort_mode:
+            self._hand.set_joint_cmd(cmd)
+            return
+        if effort is None:
+            effort = np.zeros(16, dtype=np.float32)
+        if not isinstance(effort, np.ndarray):
+            raise TypeError("effort must be a numpy.ndarray.")
+        if effort.shape != (16,):
+            raise ValueError("effort must have shape (16,).")
+        self._ensure_direct_effort_mode()
+        with self._direct_effort_lock:
+            self._direct_effort_cmd = effort.astype(np.float32, copy=True)
         self._hand.set_joint_cmd(cmd)
+        self._publish_direct_effort_cmd()
 
     def get_cmd_connection_count(self) -> int:
         return int(self._hand.pub_joint_cmd.get_num_connections())
