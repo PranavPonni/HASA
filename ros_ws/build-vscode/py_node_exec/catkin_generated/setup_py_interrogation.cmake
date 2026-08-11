@@ -1,0 +1,7 @@
+set(py_node_exec_SETUP_PY_SETUP_MODULE "distutils.core")
+set(py_node_exec_SETUP_PY_VERSION "0.0.0")
+set(py_node_exec_SETUP_PY_SCRIPTS "")
+set(py_node_exec_SETUP_PY_PACKAGES "py_node_exec")
+set(py_node_exec_SETUP_PY_PACKAGE_DIRS "src/py_node_exec")
+set(py_node_exec_SETUP_PY_MODULES "")
+set(py_node_exec_SETUP_PY_MODULE_DIRS "")

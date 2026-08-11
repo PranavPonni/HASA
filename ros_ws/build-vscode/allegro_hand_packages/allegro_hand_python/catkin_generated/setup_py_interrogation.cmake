@@ -1,0 +1,7 @@
+set(allegro_hand_python_SETUP_PY_SETUP_MODULE "distutils.core")
+set(allegro_hand_python_SETUP_PY_VERSION "1.0.0")
+set(allegro_hand_python_SETUP_PY_SCRIPTS "")
+set(allegro_hand_python_SETUP_PY_PACKAGES "allegro_hand")
+set(allegro_hand_python_SETUP_PY_PACKAGE_DIRS "scripts/allegro_hand")
+set(allegro_hand_python_SETUP_PY_MODULES "")
+set(allegro_hand_python_SETUP_PY_MODULE_DIRS "")

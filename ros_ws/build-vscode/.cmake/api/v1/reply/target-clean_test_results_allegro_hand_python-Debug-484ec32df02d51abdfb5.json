@@ -1,0 +1,82 @@
+{
+	"backtrace" : 3,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_custom_target",
+			"catkin_run_tests_target",
+			"catkin_add_nosetests"
+		],
+		"files" : 
+		[
+			"/opt/ros/noetic/share/catkin/cmake/test/tests.cmake",
+			"/opt/ros/noetic/share/catkin/cmake/test/nosetests.cmake",
+			"allegro_hand_packages/allegro_hand_python/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 18,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 83,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 185,
+				"parent" : 2
+			}
+		]
+	},
+	"id" : "clean_test_results_allegro_hand_python::@f1fc26701c32005394a7",
+	"name" : "clean_test_results_allegro_hand_python",
+	"paths" : 
+	{
+		"build" : "allegro_hand_packages/allegro_hand_python",
+		"source" : "allegro_hand_packages/allegro_hand_python"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "",
+			"sourceIndexes" : 
+			[
+				0
+			]
+		},
+		{
+			"name" : "CMake Rules",
+			"sourceIndexes" : 
+			[
+				1
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 3,
+			"isGenerated" : true,
+			"path" : "/home/handlingteam2/HASA/ros_ws/build-vscode/allegro_hand_packages/allegro_hand_python/CMakeFiles/clean_test_results_allegro_hand_python",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 0,
+			"isGenerated" : true,
+			"path" : "/home/handlingteam2/HASA/ros_ws/build-vscode/allegro_hand_packages/allegro_hand_python/CMakeFiles/clean_test_results_allegro_hand_python.rule",
+			"sourceGroupIndex" : 1
+		}
+	],
+	"type" : "UTILITY"
+}

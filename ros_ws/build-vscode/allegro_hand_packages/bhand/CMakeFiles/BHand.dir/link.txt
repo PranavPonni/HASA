@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC -g  -shared -Wl,-soname,libBHand.so -o ../../devel/lib/libBHand.so  

@@ -1,0 +1,67 @@
+[
+{
+  "directory": "/home/handlingteam2/HASA/ros_ws/build-vscode/gtest/googlemock",
+  "command": "/usr/bin/c++  -DGTEST_CREATE_SHARED_LIBRARY=1 -Dgmock_main_EXPORTS -isystem /usr/src/googletest/googlemock/include -isystem /usr/src/googletest/googlemock -isystem /usr/src/googletest/googletest/include -isystem /usr/src/googletest/googletest  -g -fPIC   -Wall -Wshadow -Wno-error=dangling-else -DGTEST_HAS_PTHREAD=1 -fexceptions -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -DGTEST_HAS_PTHREAD=1 -std=c++11 -o CMakeFiles/gmock_main.dir/src/gmock_main.cc.o -c /usr/src/googletest/googlemock/src/gmock_main.cc",
+  "file": "/usr/src/googletest/googlemock/src/gmock_main.cc"
+},
+{
+  "directory": "/home/handlingteam2/HASA/ros_ws/build-vscode/gtest/googlemock",
+  "command": "/usr/bin/c++  -DGTEST_CREATE_SHARED_LIBRARY=1 -Dgmock_EXPORTS -I/usr/src/googletest/googlemock/include -I/usr/src/googletest/googlemock -isystem /usr/src/googletest/googletest/include -isystem /usr/src/googletest/googletest  -g -fPIC   -Wall -Wshadow -Wno-error=dangling-else -DGTEST_HAS_PTHREAD=1 -fexceptions -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -DGTEST_HAS_PTHREAD=1 -std=c++11 -o CMakeFiles/gmock.dir/src/gmock-all.cc.o -c /usr/src/googletest/googlemock/src/gmock-all.cc",
+  "file": "/usr/src/googletest/googlemock/src/gmock-all.cc"
+},
+{
+  "directory": "/home/handlingteam2/HASA/ros_ws/build-vscode/gtest/googletest",
+  "command": "/usr/bin/c++  -DGTEST_CREATE_SHARED_LIBRARY=1 -Dgtest_main_EXPORTS -isystem /usr/src/googletest/googletest/include -isystem /usr/src/googletest/googletest  -g -fPIC   -Wall -Wshadow -Wno-error=dangling-else -DGTEST_HAS_PTHREAD=1 -fexceptions -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -DGTEST_HAS_PTHREAD=1 -std=c++11 -o CMakeFiles/gtest_main.dir/src/gtest_main.cc.o -c /usr/src/googletest/googletest/src/gtest_main.cc",
+  "file": "/usr/src/googletest/googletest/src/gtest_main.cc"
+},
+{
+  "directory": "/home/handlingteam2/HASA/ros_ws/build-vscode/gtest/googletest",
+  "command": "/usr/bin/c++  -DGTEST_CREATE_SHARED_LIBRARY=1 -Dgtest_EXPORTS -I/usr/src/googletest/googletest/include -I/usr/src/googletest/googletest  -g -fPIC   -Wall -Wshadow -Wno-error=dangling-else -DGTEST_HAS_PTHREAD=1 -fexceptions -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -std=c++11 -o CMakeFiles/gtest.dir/src/gtest-all.cc.o -c /usr/src/googletest/googletest/src/gtest-all.cc",
+  "file": "/usr/src/googletest/googletest/src/gtest-all.cc"
+},
+{
+  "directory": "/home/handlingteam2/HASA/ros_ws/build-vscode/allegro_hand_packages/allegro_hand_driver",
+  "command": "/usr/bin/c++  -DROSCONSOLE_BACKEND_LOG4CXX -DROS_BUILD_SHARED_LIBS=1 -DROS_PACKAGE_NAME=\\\"allegro_hand_driver\\\" -Dallegro_hand_driver_EXPORTS -I/opt/ros/noetic/include -I/opt/ros/noetic/share/xmlrpcpp/cmake/../../../include/xmlrpcpp -I/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_driver/include  -g -fPIC   -o CMakeFiles/allegro_hand_driver.dir/src/AllegroHandDrv.cpp.o -c /home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_driver/src/AllegroHandDrv.cpp",
+  "file": "/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_driver/src/AllegroHandDrv.cpp"
+},
+{
+  "directory": "/home/handlingteam2/HASA/ros_ws/build-vscode/allegro_hand_packages/allegro_hand_driver",
+  "command": "/usr/bin/c++  -DROSCONSOLE_BACKEND_LOG4CXX -DROS_BUILD_SHARED_LIBS=1 -DROS_PACKAGE_NAME=\\\"allegro_hand_driver\\\" -Dallegro_hand_driver_EXPORTS -I/opt/ros/noetic/include -I/opt/ros/noetic/share/xmlrpcpp/cmake/../../../include/xmlrpcpp -I/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_driver/include  -g -fPIC   -o CMakeFiles/allegro_hand_driver.dir/src/candrv/pcan.cpp.o -c /home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_driver/src/candrv/pcan.cpp",
+  "file": "/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_driver/src/candrv/pcan.cpp"
+},
+{
+  "directory": "/home/handlingteam2/HASA/ros_ws/build-vscode/allegro_hand_packages/allegro_hand_keyboard",
+  "command": "/usr/bin/c++  -DROSCONSOLE_BACKEND_LOG4CXX -DROS_BUILD_SHARED_LIBS=1 -DROS_PACKAGE_NAME=\\\"allegro_hand_keyboard\\\" -I/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_keyboard/include -I/opt/ros/noetic/include -I/opt/ros/noetic/share/xmlrpcpp/cmake/../../../include/xmlrpcpp  -g   -o CMakeFiles/allegro_hand_keyboard.dir/src/allegro_hand_keyboard.cpp.o -c /home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_keyboard/src/allegro_hand_keyboard.cpp",
+  "file": "/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_keyboard/src/allegro_hand_keyboard.cpp"
+},
+{
+  "directory": "/home/handlingteam2/HASA/ros_ws/build-vscode/allegro_hand_packages/allegro_hand_controllers",
+  "command": "/usr/bin/c++  -DROSCONSOLE_BACKEND_LOG4CXX -DROS_BUILD_SHARED_LIBS=1 -DROS_PACKAGE_NAME=\\\"allegro_hand_controllers\\\" -I/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_driver/include -I/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/bhand/include -I/opt/ros/noetic/include -I/opt/ros/noetic/share/xmlrpcpp/cmake/../../../include/xmlrpcpp  -std=c++0x  -g   -o CMakeFiles/allegro_node_torque.dir/src/allegro_node_torque.cpp.o -c /home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_controllers/src/allegro_node_torque.cpp",
+  "file": "/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_controllers/src/allegro_node_torque.cpp"
+},
+{
+  "directory": "/home/handlingteam2/HASA/ros_ws/build-vscode/allegro_hand_packages/allegro_hand_controllers",
+  "command": "/usr/bin/c++  -DROSCONSOLE_BACKEND_LOG4CXX -DROS_BUILD_SHARED_LIBS=1 -DROS_PACKAGE_NAME=\\\"allegro_hand_controllers\\\" -I/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_driver/include -I/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/bhand/include -I/opt/ros/noetic/include -I/opt/ros/noetic/share/xmlrpcpp/cmake/../../../include/xmlrpcpp  -std=c++0x  -g   -o CMakeFiles/allegro_node_sim.dir/src/allegro_node_sim.cpp.o -c /home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_controllers/src/allegro_node_sim.cpp",
+  "file": "/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_controllers/src/allegro_node_sim.cpp"
+},
+{
+  "directory": "/home/handlingteam2/HASA/ros_ws/build-vscode/allegro_hand_packages/allegro_hand_controllers",
+  "command": "/usr/bin/c++  -DROSCONSOLE_BACKEND_LOG4CXX -DROS_BUILD_SHARED_LIBS=1 -DROS_PACKAGE_NAME=\\\"allegro_hand_controllers\\\" -Dallegro_node_EXPORTS -I/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_driver/include -I/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/bhand/include -I/opt/ros/noetic/include -I/opt/ros/noetic/share/xmlrpcpp/cmake/../../../include/xmlrpcpp  -std=c++0x  -g -fPIC   -o CMakeFiles/allegro_node.dir/src/allegro_node.cpp.o -c /home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_controllers/src/allegro_node.cpp",
+  "file": "/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_controllers/src/allegro_node.cpp"
+},
+{
+  "directory": "/home/handlingteam2/HASA/ros_ws/build-vscode/allegro_hand_packages/allegro_hand_controllers",
+  "command": "/usr/bin/c++  -DROSCONSOLE_BACKEND_LOG4CXX -DROS_BUILD_SHARED_LIBS=1 -DROS_PACKAGE_NAME=\\\"allegro_hand_controllers\\\" -I/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_driver/include -I/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/bhand/include -I/opt/ros/noetic/include -I/opt/ros/noetic/share/xmlrpcpp/cmake/../../../include/xmlrpcpp  -std=c++0x  -g   -o CMakeFiles/allegro_node_velsat.dir/src/allegro_node_velsat.cpp.o -c /home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_controllers/src/allegro_node_velsat.cpp",
+  "file": "/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_controllers/src/allegro_node_velsat.cpp"
+},
+{
+  "directory": "/home/handlingteam2/HASA/ros_ws/build-vscode/allegro_hand_packages/allegro_hand_controllers",
+  "command": "/usr/bin/c++  -DROSCONSOLE_BACKEND_LOG4CXX -DROS_BUILD_SHARED_LIBS=1 -DROS_PACKAGE_NAME=\\\"allegro_hand_controllers\\\" -I/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_driver/include -I/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/bhand/include -I/opt/ros/noetic/include -I/opt/ros/noetic/share/xmlrpcpp/cmake/../../../include/xmlrpcpp  -std=c++0x  -g   -o CMakeFiles/allegro_node_pd.dir/src/allegro_node_pd.cpp.o -c /home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_controllers/src/allegro_node_pd.cpp",
+  "file": "/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_controllers/src/allegro_node_pd.cpp"
+},
+{
+  "directory": "/home/handlingteam2/HASA/ros_ws/build-vscode/allegro_hand_packages/allegro_hand_controllers",
+  "command": "/usr/bin/c++  -DROSCONSOLE_BACKEND_LOG4CXX -DROS_BUILD_SHARED_LIBS=1 -DROS_PACKAGE_NAME=\\\"allegro_hand_controllers\\\" -I/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_driver/include -I/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/bhand/include -I/opt/ros/noetic/include -I/opt/ros/noetic/share/xmlrpcpp/cmake/../../../include/xmlrpcpp  -std=c++0x  -g   -o CMakeFiles/allegro_node_grasp.dir/src/allegro_node_grasp.cpp.o -c /home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_controllers/src/allegro_node_grasp.cpp",
+  "file": "/home/handlingteam2/HASA/ros_ws/src/allegro_hand_packages/allegro_hand_controllers/src/allegro_node_grasp.cpp"
+}
+]

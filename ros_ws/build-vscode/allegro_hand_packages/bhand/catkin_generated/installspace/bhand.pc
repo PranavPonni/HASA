@@ -1,0 +1,8 @@
+prefix=/usr/local
+
+Name: bhand
+Description: Description of bhand
+Version: 1.0.0
+Cflags: -I${prefix}/include
+Libs: -L${prefix}/lib -lBHand
+Requires: 

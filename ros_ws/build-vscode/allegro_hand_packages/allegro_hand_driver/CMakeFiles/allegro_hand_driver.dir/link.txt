@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC -g  -shared -Wl,-soname,liballegro_hand_driver.so -o ../../devel/lib/liballegro_hand_driver.so CMakeFiles/allegro_hand_driver.dir/src/AllegroHandDrv.cpp.o CMakeFiles/allegro_hand_driver.dir/src/candrv/pcan.cpp.o 

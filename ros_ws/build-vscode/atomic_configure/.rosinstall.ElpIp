@@ -1,0 +1,2 @@
+- setup-file:
+    local-name: /home/handlingteam2/HASA/ros_ws/build-vscode/devel/setup.sh

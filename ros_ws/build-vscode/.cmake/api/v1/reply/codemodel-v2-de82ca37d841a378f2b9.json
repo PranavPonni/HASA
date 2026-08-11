@@ -1,0 +1,1062 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1,
+						4,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10,
+						11,
+						12,
+						13,
+						14
+					],
+					"hasInstallRule" : true,
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.0.2"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						21,
+						23,
+						24,
+						44,
+						60
+					]
+				},
+				{
+					"build" : "gtest",
+					"childIndexes" : 
+					[
+						2
+					],
+					"minimumCMakeVersion" : 
+					{
+						"string" : "2.8.8"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 1,
+					"source" : "/usr/src/googletest"
+				},
+				{
+					"build" : "gtest/googlemock",
+					"childIndexes" : 
+					[
+						3
+					],
+					"minimumCMakeVersion" : 
+					{
+						"string" : "2.6.4"
+					},
+					"parentIndex" : 1,
+					"projectIndex" : 2,
+					"source" : "/usr/src/googletest/googlemock",
+					"targetIndexes" : 
+					[
+						30,
+						31
+					]
+				},
+				{
+					"build" : "gtest/googletest",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "2.6.4"
+					},
+					"parentIndex" : 2,
+					"projectIndex" : 3,
+					"source" : "/usr/src/googletest/googletest",
+					"targetIndexes" : 
+					[
+						32,
+						33
+					]
+				},
+				{
+					"build" : "allegro_hand_packages/allegro_hand_description",
+					"hasInstallRule" : true,
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.0.2"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 4,
+					"source" : "allegro_hand_packages/allegro_hand_description",
+					"targetIndexes" : 
+					[
+						2
+					]
+				},
+				{
+					"build" : "allegro_hand_packages/allegro_hand_parameters",
+					"hasInstallRule" : true,
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.0.2"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 5,
+					"source" : "allegro_hand_packages/allegro_hand_parameters"
+				},
+				{
+					"build" : "allegro_hand_packages/bhand",
+					"hasInstallRule" : true,
+					"minimumCMakeVersion" : 
+					{
+						"string" : "2.8.3"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 6,
+					"source" : "allegro_hand_packages/bhand",
+					"targetIndexes" : 
+					[
+						0
+					]
+				},
+				{
+					"build" : "allegro_hand_packages/allegro_hand_driver",
+					"hasInstallRule" : true,
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.0.2"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 7,
+					"source" : "allegro_hand_packages/allegro_hand_driver",
+					"targetIndexes" : 
+					[
+						1,
+						13,
+						34,
+						35,
+						36,
+						37,
+						38,
+						39,
+						40,
+						41,
+						42,
+						43,
+						55,
+						56,
+						57,
+						58,
+						59
+					]
+				},
+				{
+					"build" : "allegro_hand_packages/allegro_hand_keyboard",
+					"hasInstallRule" : true,
+					"minimumCMakeVersion" : 
+					{
+						"string" : "2.8.3"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 8,
+					"source" : "allegro_hand_packages/allegro_hand_keyboard",
+					"targetIndexes" : 
+					[
+						14
+					]
+				},
+				{
+					"build" : "py_node_exec",
+					"hasInstallRule" : true,
+					"minimumCMakeVersion" : 
+					{
+						"string" : "2.8.3"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 9,
+					"source" : "py_node_exec"
+				},
+				{
+					"build" : "allegro_hand_packages/allegro_hand_python",
+					"hasInstallRule" : true,
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.0.2"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 10,
+					"source" : "allegro_hand_packages/allegro_hand_python",
+					"targetIndexes" : 
+					[
+						3,
+						4,
+						5,
+						6,
+						7,
+						22,
+						45,
+						46,
+						47,
+						48,
+						49
+					]
+				},
+				{
+					"build" : "allegro_hand_packages/allegro_hand_controllers",
+					"hasInstallRule" : true,
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.0.2"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 11,
+					"source" : "allegro_hand_packages/allegro_hand_controllers",
+					"targetIndexes" : 
+					[
+						15,
+						16,
+						17,
+						18,
+						19,
+						20,
+						25,
+						26,
+						27,
+						28,
+						29,
+						50,
+						51,
+						52,
+						53,
+						54
+					]
+				},
+				{
+					"build" : "allegro_package",
+					"hasInstallRule" : true,
+					"minimumCMakeVersion" : 
+					{
+						"string" : "2.8.3"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 12,
+					"source" : "allegro_package"
+				},
+				{
+					"build" : "xela_package/xela_server_ros",
+					"hasInstallRule" : true,
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.5"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 13,
+					"source" : "xela_package/xela_server_ros",
+					"targetIndexes" : 
+					[
+						8,
+						9,
+						10,
+						11,
+						12,
+						61,
+						62,
+						63,
+						64,
+						65,
+						66,
+						67,
+						68,
+						69,
+						70,
+						71
+					]
+				},
+				{
+					"build" : "xela_package/xela_py",
+					"hasInstallRule" : true,
+					"minimumCMakeVersion" : 
+					{
+						"string" : "2.8.3"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 14,
+					"source" : "xela_package/xela_py"
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"childIndexes" : 
+					[
+						1,
+						4,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10,
+						11,
+						12,
+						13,
+						14
+					],
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "Project",
+					"targetIndexes" : 
+					[
+						21,
+						23,
+						24,
+						44,
+						60
+					]
+				},
+				{
+					"childIndexes" : 
+					[
+						2
+					],
+					"directoryIndexes" : 
+					[
+						1
+					],
+					"name" : "googletest-distribution",
+					"parentIndex" : 0
+				},
+				{
+					"childIndexes" : 
+					[
+						3
+					],
+					"directoryIndexes" : 
+					[
+						2
+					],
+					"name" : "gmock",
+					"parentIndex" : 1,
+					"targetIndexes" : 
+					[
+						30,
+						31
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						3
+					],
+					"name" : "gtest",
+					"parentIndex" : 2,
+					"targetIndexes" : 
+					[
+						32,
+						33
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						4
+					],
+					"name" : "allegro_hand_description",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						2
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						5
+					],
+					"name" : "allegro_hand_parameters",
+					"parentIndex" : 0
+				},
+				{
+					"directoryIndexes" : 
+					[
+						6
+					],
+					"name" : "bhand",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						0
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						7
+					],
+					"name" : "allegro_hand_driver",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						1,
+						13,
+						34,
+						35,
+						36,
+						37,
+						38,
+						39,
+						40,
+						41,
+						42,
+						43,
+						55,
+						56,
+						57,
+						58,
+						59
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						8
+					],
+					"name" : "allegro_hand_keyboard",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						14
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						9
+					],
+					"name" : "py_node_exec",
+					"parentIndex" : 0
+				},
+				{
+					"directoryIndexes" : 
+					[
+						10
+					],
+					"name" : "allegro_hand_python",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						3,
+						4,
+						5,
+						6,
+						7,
+						22,
+						45,
+						46,
+						47,
+						48,
+						49
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						11
+					],
+					"name" : "allegro_hand_controllers",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						15,
+						16,
+						17,
+						18,
+						19,
+						20,
+						25,
+						26,
+						27,
+						28,
+						29,
+						50,
+						51,
+						52,
+						53,
+						54
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						12
+					],
+					"name" : "allegro_package",
+					"parentIndex" : 0
+				},
+				{
+					"directoryIndexes" : 
+					[
+						13
+					],
+					"name" : "xela_server_ros",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						8,
+						9,
+						10,
+						11,
+						12,
+						61,
+						62,
+						63,
+						64,
+						65,
+						66,
+						67,
+						68,
+						69,
+						70,
+						71
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						14
+					],
+					"name" : "xela_py",
+					"parentIndex" : 0
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 6,
+					"id" : "BHand::@063eaae2aae08b4d5a3f",
+					"jsonFile" : "target-BHand-Debug-7b79286732647db6282e.json",
+					"name" : "BHand",
+					"projectIndex" : 6
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "EP_libpcan::@355dc6b104338def84c0",
+					"jsonFile" : "target-EP_libpcan-Debug-2c66885272e4e1dd3786.json",
+					"name" : "EP_libpcan",
+					"projectIndex" : 7
+				},
+				{
+					"directoryIndex" : 4,
+					"id" : "_catkin_empty_exported_target::@422a9e9e16fbbaba626e",
+					"jsonFile" : "target-_catkin_empty_exported_target-Debug-e16b4ca76466d489f91d.json",
+					"name" : "_catkin_empty_exported_target",
+					"projectIndex" : 4
+				},
+				{
+					"directoryIndex" : 10,
+					"id" : "_run_tests_allegro_hand_python::@f1fc26701c32005394a7",
+					"jsonFile" : "target-_run_tests_allegro_hand_python-Debug-d6c06cd1f1a556e7a725.json",
+					"name" : "_run_tests_allegro_hand_python",
+					"projectIndex" : 10
+				},
+				{
+					"directoryIndex" : 10,
+					"id" : "_run_tests_allegro_hand_python_nosetests::@f1fc26701c32005394a7",
+					"jsonFile" : "target-_run_tests_allegro_hand_python_nosetests-Debug-7350a9ef5a50c7c82d38.json",
+					"name" : "_run_tests_allegro_hand_python_nosetests",
+					"projectIndex" : 10
+				},
+				{
+					"directoryIndex" : 10,
+					"id" : "_run_tests_allegro_hand_python_nosetests_scripts.allegro_hand::@f1fc26701c32005394a7",
+					"jsonFile" : "target-_run_tests_allegro_hand_python_nosetests_scripts.allegro_hand-Debug-9de11637642cd7c9797a.json",
+					"name" : "_run_tests_allegro_hand_python_nosetests_scripts.allegro_hand",
+					"projectIndex" : 10
+				},
+				{
+					"directoryIndex" : 10,
+					"id" : "_run_tests_allegro_hand_python_rostest::@f1fc26701c32005394a7",
+					"jsonFile" : "target-_run_tests_allegro_hand_python_rostest-Debug-061c2d030855b6a7ad1a.json",
+					"name" : "_run_tests_allegro_hand_python_rostest",
+					"projectIndex" : 10
+				},
+				{
+					"directoryIndex" : 10,
+					"id" : "_run_tests_allegro_hand_python_rostest_launch_test_allegro_launch.test::@f1fc26701c32005394a7",
+					"jsonFile" : "target-_run_tests_allegro_hand_python_rostest_launch_test_allegro_launch.test-Debug-4fcddae4cd27aa76dd91.json",
+					"name" : "_run_tests_allegro_hand_python_rostest_launch_test_allegro_launch.test",
+					"projectIndex" : 10
+				},
+				{
+					"directoryIndex" : 13,
+					"id" : "_xela_server_ros_generate_messages_check_deps_Forces::@986f8aec007dff3e4271",
+					"jsonFile" : "target-_xela_server_ros_generate_messages_check_deps_Forces-Debug-1bfead837b070b5f6b73.json",
+					"name" : "_xela_server_ros_generate_messages_check_deps_Forces",
+					"projectIndex" : 13
+				},
+				{
+					"directoryIndex" : 13,
+					"id" : "_xela_server_ros_generate_messages_check_deps_SensStream::@986f8aec007dff3e4271",
+					"jsonFile" : "target-_xela_server_ros_generate_messages_check_deps_SensStream-Debug-55de716845f98f95fb9a.json",
+					"name" : "_xela_server_ros_generate_messages_check_deps_SensStream",
+					"projectIndex" : 13
+				},
+				{
+					"directoryIndex" : 13,
+					"id" : "_xela_server_ros_generate_messages_check_deps_SensorFull::@986f8aec007dff3e4271",
+					"jsonFile" : "target-_xela_server_ros_generate_messages_check_deps_SensorFull-Debug-5af1ba3646b5c0910dcb.json",
+					"name" : "_xela_server_ros_generate_messages_check_deps_SensorFull",
+					"projectIndex" : 13
+				},
+				{
+					"directoryIndex" : 13,
+					"id" : "_xela_server_ros_generate_messages_check_deps_Taxel::@986f8aec007dff3e4271",
+					"jsonFile" : "target-_xela_server_ros_generate_messages_check_deps_Taxel-Debug-b48ed90bb2df86c09d07.json",
+					"name" : "_xela_server_ros_generate_messages_check_deps_Taxel",
+					"projectIndex" : 13
+				},
+				{
+					"directoryIndex" : 13,
+					"id" : "_xela_server_ros_generate_messages_check_deps_XelaSensorStream::@986f8aec007dff3e4271",
+					"jsonFile" : "target-_xela_server_ros_generate_messages_check_deps_XelaSensorStream-Debug-c29e9ae6442fed780976.json",
+					"name" : "_xela_server_ros_generate_messages_check_deps_XelaSensorStream",
+					"projectIndex" : 13
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "allegro_hand_driver::@355dc6b104338def84c0",
+					"jsonFile" : "target-allegro_hand_driver-Debug-30be4cc00cc4d8572923.json",
+					"name" : "allegro_hand_driver",
+					"projectIndex" : 7
+				},
+				{
+					"directoryIndex" : 8,
+					"id" : "allegro_hand_keyboard::@74be74e981307948245a",
+					"jsonFile" : "target-allegro_hand_keyboard-Debug-e9f46efbc709e3728921.json",
+					"name" : "allegro_hand_keyboard",
+					"projectIndex" : 8
+				},
+				{
+					"directoryIndex" : 11,
+					"id" : "allegro_node::@4b2d0ca8f8614db64fd6",
+					"jsonFile" : "target-allegro_node-Debug-7c209a92c163b0800b0e.json",
+					"name" : "allegro_node",
+					"projectIndex" : 11
+				},
+				{
+					"directoryIndex" : 11,
+					"id" : "allegro_node_grasp::@4b2d0ca8f8614db64fd6",
+					"jsonFile" : "target-allegro_node_grasp-Debug-b3b1458e0e758963597a.json",
+					"name" : "allegro_node_grasp",
+					"projectIndex" : 11
+				},
+				{
+					"directoryIndex" : 11,
+					"id" : "allegro_node_pd::@4b2d0ca8f8614db64fd6",
+					"jsonFile" : "target-allegro_node_pd-Debug-7ed9b1189894597d97f3.json",
+					"name" : "allegro_node_pd",
+					"projectIndex" : 11
+				},
+				{
+					"directoryIndex" : 11,
+					"id" : "allegro_node_sim::@4b2d0ca8f8614db64fd6",
+					"jsonFile" : "target-allegro_node_sim-Debug-f8d0ebf9c157b389de59.json",
+					"name" : "allegro_node_sim",
+					"projectIndex" : 11
+				},
+				{
+					"directoryIndex" : 11,
+					"id" : "allegro_node_torque::@4b2d0ca8f8614db64fd6",
+					"jsonFile" : "target-allegro_node_torque-Debug-ac95632e9dfbed897a45.json",
+					"name" : "allegro_node_torque",
+					"projectIndex" : 11
+				},
+				{
+					"directoryIndex" : 11,
+					"id" : "allegro_node_velsat::@4b2d0ca8f8614db64fd6",
+					"jsonFile" : "target-allegro_node_velsat-Debug-62877709cc7347566a99.json",
+					"name" : "allegro_node_velsat",
+					"projectIndex" : 11
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "clean_test_results::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-clean_test_results-Debug-d0fadf9f740a00506430.json",
+					"name" : "clean_test_results",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 10,
+					"id" : "clean_test_results_allegro_hand_python::@f1fc26701c32005394a7",
+					"jsonFile" : "target-clean_test_results_allegro_hand_python-Debug-484ec32df02d51abdfb5.json",
+					"name" : "clean_test_results_allegro_hand_python",
+					"projectIndex" : 10
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "download_extra_data::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-download_extra_data-Debug-26d419a6bf2b582c2a72.json",
+					"name" : "download_extra_data",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "doxygen::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-doxygen-Debug-88595cbda2a15872d775.json",
+					"name" : "doxygen",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 11,
+					"id" : "geometry_msgs_generate_messages_cpp::@4b2d0ca8f8614db64fd6",
+					"jsonFile" : "target-geometry_msgs_generate_messages_cpp-Debug-7a35fff0311560fa0e5d.json",
+					"name" : "geometry_msgs_generate_messages_cpp",
+					"projectIndex" : 11
+				},
+				{
+					"directoryIndex" : 11,
+					"id" : "geometry_msgs_generate_messages_eus::@4b2d0ca8f8614db64fd6",
+					"jsonFile" : "target-geometry_msgs_generate_messages_eus-Debug-bc8b888eaa01a69ea4af.json",
+					"name" : "geometry_msgs_generate_messages_eus",
+					"projectIndex" : 11
+				},
+				{
+					"directoryIndex" : 11,
+					"id" : "geometry_msgs_generate_messages_lisp::@4b2d0ca8f8614db64fd6",
+					"jsonFile" : "target-geometry_msgs_generate_messages_lisp-Debug-3526f03d4716f415bf7f.json",
+					"name" : "geometry_msgs_generate_messages_lisp",
+					"projectIndex" : 11
+				},
+				{
+					"directoryIndex" : 11,
+					"id" : "geometry_msgs_generate_messages_nodejs::@4b2d0ca8f8614db64fd6",
+					"jsonFile" : "target-geometry_msgs_generate_messages_nodejs-Debug-341c4ed5918fb0eff3ba.json",
+					"name" : "geometry_msgs_generate_messages_nodejs",
+					"projectIndex" : 11
+				},
+				{
+					"directoryIndex" : 11,
+					"id" : "geometry_msgs_generate_messages_py::@4b2d0ca8f8614db64fd6",
+					"jsonFile" : "target-geometry_msgs_generate_messages_py-Debug-3846191eff7fb4a21860.json",
+					"name" : "geometry_msgs_generate_messages_py",
+					"projectIndex" : 11
+				},
+				{
+					"directoryIndex" : 2,
+					"id" : "gmock::@e3f94eedc5dc07131386",
+					"jsonFile" : "target-gmock-Debug-8300d3bc5c42c58df3e5.json",
+					"name" : "gmock",
+					"projectIndex" : 2
+				},
+				{
+					"directoryIndex" : 2,
+					"id" : "gmock_main::@e3f94eedc5dc07131386",
+					"jsonFile" : "target-gmock_main-Debug-6d9b7ac3792cbeec4b59.json",
+					"name" : "gmock_main",
+					"projectIndex" : 2
+				},
+				{
+					"directoryIndex" : 3,
+					"id" : "gtest::@b738d542747fbb7ea6e3",
+					"jsonFile" : "target-gtest-Debug-d898f45654e826fa9517.json",
+					"name" : "gtest",
+					"projectIndex" : 3
+				},
+				{
+					"directoryIndex" : 3,
+					"id" : "gtest_main::@b738d542747fbb7ea6e3",
+					"jsonFile" : "target-gtest_main-Debug-1a5c611d87b6663e0a42.json",
+					"name" : "gtest_main",
+					"projectIndex" : 3
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "roscpp_generate_messages_cpp::@355dc6b104338def84c0",
+					"jsonFile" : "target-roscpp_generate_messages_cpp-Debug-27f0e410c40f7a167e20.json",
+					"name" : "roscpp_generate_messages_cpp",
+					"projectIndex" : 7
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "roscpp_generate_messages_eus::@355dc6b104338def84c0",
+					"jsonFile" : "target-roscpp_generate_messages_eus-Debug-e268bc4943d2cad16731.json",
+					"name" : "roscpp_generate_messages_eus",
+					"projectIndex" : 7
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "roscpp_generate_messages_lisp::@355dc6b104338def84c0",
+					"jsonFile" : "target-roscpp_generate_messages_lisp-Debug-c3c205cfaeca4357ff71.json",
+					"name" : "roscpp_generate_messages_lisp",
+					"projectIndex" : 7
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "roscpp_generate_messages_nodejs::@355dc6b104338def84c0",
+					"jsonFile" : "target-roscpp_generate_messages_nodejs-Debug-156651f9b8443c1d3b23.json",
+					"name" : "roscpp_generate_messages_nodejs",
+					"projectIndex" : 7
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "roscpp_generate_messages_py::@355dc6b104338def84c0",
+					"jsonFile" : "target-roscpp_generate_messages_py-Debug-40ce404fbb6278a348be.json",
+					"name" : "roscpp_generate_messages_py",
+					"projectIndex" : 7
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "rosgraph_msgs_generate_messages_cpp::@355dc6b104338def84c0",
+					"jsonFile" : "target-rosgraph_msgs_generate_messages_cpp-Debug-f64e85e5ce664ea6a009.json",
+					"name" : "rosgraph_msgs_generate_messages_cpp",
+					"projectIndex" : 7
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "rosgraph_msgs_generate_messages_eus::@355dc6b104338def84c0",
+					"jsonFile" : "target-rosgraph_msgs_generate_messages_eus-Debug-c0f16ce05c5baa7e2ce9.json",
+					"name" : "rosgraph_msgs_generate_messages_eus",
+					"projectIndex" : 7
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "rosgraph_msgs_generate_messages_lisp::@355dc6b104338def84c0",
+					"jsonFile" : "target-rosgraph_msgs_generate_messages_lisp-Debug-4b53e7a4b38f97eacfee.json",
+					"name" : "rosgraph_msgs_generate_messages_lisp",
+					"projectIndex" : 7
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "rosgraph_msgs_generate_messages_nodejs::@355dc6b104338def84c0",
+					"jsonFile" : "target-rosgraph_msgs_generate_messages_nodejs-Debug-140e2fa68ee1939a2dff.json",
+					"name" : "rosgraph_msgs_generate_messages_nodejs",
+					"projectIndex" : 7
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "rosgraph_msgs_generate_messages_py::@355dc6b104338def84c0",
+					"jsonFile" : "target-rosgraph_msgs_generate_messages_py-Debug-58608c20409a90c512fb.json",
+					"name" : "rosgraph_msgs_generate_messages_py",
+					"projectIndex" : 7
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "run_tests::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-run_tests-Debug-a03ad624f41ec07f19ac.json",
+					"name" : "run_tests",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 10,
+					"id" : "run_tests_allegro_hand_python::@f1fc26701c32005394a7",
+					"jsonFile" : "target-run_tests_allegro_hand_python-Debug-95c27682e08dfbf2a801.json",
+					"name" : "run_tests_allegro_hand_python",
+					"projectIndex" : 10
+				},
+				{
+					"directoryIndex" : 10,
+					"id" : "run_tests_allegro_hand_python_nosetests::@f1fc26701c32005394a7",
+					"jsonFile" : "target-run_tests_allegro_hand_python_nosetests-Debug-fb82d9cd969b45435e1b.json",
+					"name" : "run_tests_allegro_hand_python_nosetests",
+					"projectIndex" : 10
+				},
+				{
+					"directoryIndex" : 10,
+					"id" : "run_tests_allegro_hand_python_nosetests_scripts.allegro_hand::@f1fc26701c32005394a7",
+					"jsonFile" : "target-run_tests_allegro_hand_python_nosetests_scripts.allegro_hand-Debug-35c2f54ed4d367af436d.json",
+					"name" : "run_tests_allegro_hand_python_nosetests_scripts.allegro_hand",
+					"projectIndex" : 10
+				},
+				{
+					"directoryIndex" : 10,
+					"id" : "run_tests_allegro_hand_python_rostest::@f1fc26701c32005394a7",
+					"jsonFile" : "target-run_tests_allegro_hand_python_rostest-Debug-cf92986ffa0595754b78.json",
+					"name" : "run_tests_allegro_hand_python_rostest",
+					"projectIndex" : 10
+				},
+				{
+					"directoryIndex" : 10,
+					"id" : "run_tests_allegro_hand_python_rostest_launch_test_allegro_launch.test::@f1fc26701c32005394a7",
+					"jsonFile" : "target-run_tests_allegro_hand_python_rostest_launch_test_allegro_launch.test-Debug-a4520de2829d1d67fcea.json",
+					"name" : "run_tests_allegro_hand_python_rostest_launch_test_allegro_launch.test",
+					"projectIndex" : 10
+				},
+				{
+					"directoryIndex" : 11,
+					"id" : "sensor_msgs_generate_messages_cpp::@4b2d0ca8f8614db64fd6",
+					"jsonFile" : "target-sensor_msgs_generate_messages_cpp-Debug-5c2d40a29321efc89710.json",
+					"name" : "sensor_msgs_generate_messages_cpp",
+					"projectIndex" : 11
+				},
+				{
+					"directoryIndex" : 11,
+					"id" : "sensor_msgs_generate_messages_eus::@4b2d0ca8f8614db64fd6",
+					"jsonFile" : "target-sensor_msgs_generate_messages_eus-Debug-71bcb4f8939003b08f72.json",
+					"name" : "sensor_msgs_generate_messages_eus",
+					"projectIndex" : 11
+				},
+				{
+					"directoryIndex" : 11,
+					"id" : "sensor_msgs_generate_messages_lisp::@4b2d0ca8f8614db64fd6",
+					"jsonFile" : "target-sensor_msgs_generate_messages_lisp-Debug-d244f58f17b20590b736.json",
+					"name" : "sensor_msgs_generate_messages_lisp",
+					"projectIndex" : 11
+				},
+				{
+					"directoryIndex" : 11,
+					"id" : "sensor_msgs_generate_messages_nodejs::@4b2d0ca8f8614db64fd6",
+					"jsonFile" : "target-sensor_msgs_generate_messages_nodejs-Debug-0660a7907ae0c4c9c48e.json",
+					"name" : "sensor_msgs_generate_messages_nodejs",
+					"projectIndex" : 11
+				},
+				{
+					"directoryIndex" : 11,
+					"id" : "sensor_msgs_generate_messages_py::@4b2d0ca8f8614db64fd6",
+					"jsonFile" : "target-sensor_msgs_generate_messages_py-Debug-c2d635377e58b4a2aa25.json",
+					"name" : "sensor_msgs_generate_messages_py",
+					"projectIndex" : 11
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "std_msgs_generate_messages_cpp::@355dc6b104338def84c0",
+					"jsonFile" : "target-std_msgs_generate_messages_cpp-Debug-98f748c45c557ee050e0.json",
+					"name" : "std_msgs_generate_messages_cpp",
+					"projectIndex" : 7
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "std_msgs_generate_messages_eus::@355dc6b104338def84c0",
+					"jsonFile" : "target-std_msgs_generate_messages_eus-Debug-ac42e2703a4d61767866.json",
+					"name" : "std_msgs_generate_messages_eus",
+					"projectIndex" : 7
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "std_msgs_generate_messages_lisp::@355dc6b104338def84c0",
+					"jsonFile" : "target-std_msgs_generate_messages_lisp-Debug-acbc83bcf7a16f6c06a7.json",
+					"name" : "std_msgs_generate_messages_lisp",
+					"projectIndex" : 7
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "std_msgs_generate_messages_nodejs::@355dc6b104338def84c0",
+					"jsonFile" : "target-std_msgs_generate_messages_nodejs-Debug-18a213c9abf94a61d6bf.json",
+					"name" : "std_msgs_generate_messages_nodejs",
+					"projectIndex" : 7
+				},
+				{
+					"directoryIndex" : 7,
+					"id" : "std_msgs_generate_messages_py::@355dc6b104338def84c0",
+					"jsonFile" : "target-std_msgs_generate_messages_py-Debug-9d18afebed4056feb426.json",
+					"name" : "std_msgs_generate_messages_py",
+					"projectIndex" : 7
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "tests::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-tests-Debug-645674a8b6faee116c67.json",
+					"name" : "tests",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 13,
+					"id" : "xela_server_ros_gencpp::@986f8aec007dff3e4271",
+					"jsonFile" : "target-xela_server_ros_gencpp-Debug-2e9a05e9468a0a41dd50.json",
+					"name" : "xela_server_ros_gencpp",
+					"projectIndex" : 13
+				},
+				{
+					"directoryIndex" : 13,
+					"id" : "xela_server_ros_generate_messages::@986f8aec007dff3e4271",
+					"jsonFile" : "target-xela_server_ros_generate_messages-Debug-598f5344ed789f5949a6.json",
+					"name" : "xela_server_ros_generate_messages",
+					"projectIndex" : 13
+				},
+				{
+					"directoryIndex" : 13,
+					"id" : "xela_server_ros_generate_messages_cpp::@986f8aec007dff3e4271",
+					"jsonFile" : "target-xela_server_ros_generate_messages_cpp-Debug-f8053be3ba4a728fedb7.json",
+					"name" : "xela_server_ros_generate_messages_cpp",
+					"projectIndex" : 13
+				},
+				{
+					"directoryIndex" : 13,
+					"id" : "xela_server_ros_generate_messages_eus::@986f8aec007dff3e4271",
+					"jsonFile" : "target-xela_server_ros_generate_messages_eus-Debug-2c559ff8aec9b8abced6.json",
+					"name" : "xela_server_ros_generate_messages_eus",
+					"projectIndex" : 13
+				},
+				{
+					"directoryIndex" : 13,
+					"id" : "xela_server_ros_generate_messages_lisp::@986f8aec007dff3e4271",
+					"jsonFile" : "target-xela_server_ros_generate_messages_lisp-Debug-fa82764432240bfec094.json",
+					"name" : "xela_server_ros_generate_messages_lisp",
+					"projectIndex" : 13
+				},
+				{
+					"directoryIndex" : 13,
+					"id" : "xela_server_ros_generate_messages_nodejs::@986f8aec007dff3e4271",
+					"jsonFile" : "target-xela_server_ros_generate_messages_nodejs-Debug-e92fdd5ae616a785b977.json",
+					"name" : "xela_server_ros_generate_messages_nodejs",
+					"projectIndex" : 13
+				},
+				{
+					"directoryIndex" : 13,
+					"id" : "xela_server_ros_generate_messages_py::@986f8aec007dff3e4271",
+					"jsonFile" : "target-xela_server_ros_generate_messages_py-Debug-035304197f262f837688.json",
+					"name" : "xela_server_ros_generate_messages_py",
+					"projectIndex" : 13
+				},
+				{
+					"directoryIndex" : 13,
+					"id" : "xela_server_ros_geneus::@986f8aec007dff3e4271",
+					"jsonFile" : "target-xela_server_ros_geneus-Debug-ac15d211d6ffed30f47a.json",
+					"name" : "xela_server_ros_geneus",
+					"projectIndex" : 13
+				},
+				{
+					"directoryIndex" : 13,
+					"id" : "xela_server_ros_genlisp::@986f8aec007dff3e4271",
+					"jsonFile" : "target-xela_server_ros_genlisp-Debug-4e859af67628426ea43a.json",
+					"name" : "xela_server_ros_genlisp",
+					"projectIndex" : 13
+				},
+				{
+					"directoryIndex" : 13,
+					"id" : "xela_server_ros_gennodejs::@986f8aec007dff3e4271",
+					"jsonFile" : "target-xela_server_ros_gennodejs-Debug-1231e8d30640efa3e1d5.json",
+					"name" : "xela_server_ros_gennodejs",
+					"projectIndex" : 13
+				},
+				{
+					"directoryIndex" : 13,
+					"id" : "xela_server_ros_genpy::@986f8aec007dff3e4271",
+					"jsonFile" : "target-xela_server_ros_genpy-Debug-c2315d837b2e8eb02927.json",
+					"name" : "xela_server_ros_genpy",
+					"projectIndex" : 13
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/handlingteam2/HASA/ros_ws/build-vscode",
+		"source" : "/home/handlingteam2/HASA/ros_ws/src"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 0
+	}
+}

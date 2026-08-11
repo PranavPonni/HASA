@@ -1,0 +1,8 @@
+prefix=/usr/local
+
+Name: py_node_exec
+Description: Description of py_node_exec
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

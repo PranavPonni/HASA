@@ -1,0 +1,7 @@
+set(xela_py_SETUP_PY_SETUP_MODULE "distutils.core")
+set(xela_py_SETUP_PY_VERSION "0.0.0")
+set(xela_py_SETUP_PY_SCRIPTS "")
+set(xela_py_SETUP_PY_PACKAGES "xela_py")
+set(xela_py_SETUP_PY_PACKAGE_DIRS "src/xela_py")
+set(xela_py_SETUP_PY_MODULES "")
+set(xela_py_SETUP_PY_MODULE_DIRS "")

@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC -std=c++0x  -g  -shared -Wl,-soname,liballegro_node.so -o ../../devel/lib/liballegro_node.so CMakeFiles/allegro_node.dir/src/allegro_node.cpp.o 

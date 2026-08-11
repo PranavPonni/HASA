@@ -1,0 +1,7 @@
+set(allegro_package_SETUP_PY_SETUP_MODULE "distutils.core")
+set(allegro_package_SETUP_PY_VERSION "0.0.0")
+set(allegro_package_SETUP_PY_SCRIPTS "")
+set(allegro_package_SETUP_PY_PACKAGES "allegro_package")
+set(allegro_package_SETUP_PY_PACKAGE_DIRS "src/allegro_package")
+set(allegro_package_SETUP_PY_MODULES "")
+set(allegro_package_SETUP_PY_MODULE_DIRS "")

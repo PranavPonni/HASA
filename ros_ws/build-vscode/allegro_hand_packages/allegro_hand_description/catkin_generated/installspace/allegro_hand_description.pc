@@ -1,0 +1,8 @@
+prefix=/usr/local
+
+Name: allegro_hand_description
+Description: Description of allegro_hand_description
+Version: 1.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

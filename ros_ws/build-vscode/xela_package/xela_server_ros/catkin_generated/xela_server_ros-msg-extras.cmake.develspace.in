@@ -1,0 +1,2 @@
+set(xela_server_ros_MESSAGE_FILES "/home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensorFull.msg;/home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensStream.msg;/home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Taxel.msg;/home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Forces.msg")
+set(xela_server_ros_SERVICE_FILES "/home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/srv/XelaSensorStream.srv")
