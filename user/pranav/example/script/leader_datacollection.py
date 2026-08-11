@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import os
 import shutil
 import glob
@@ -20,13 +21,26 @@ DATA_DIR = "/home/handlingteam2/HASA/user/pranav/example/data/new/bolts/M3.5bolt
 MAX_TIMESTEP = 800
 CTRL_FREQ = 15.0
 HAND_TOPIC_PREFIX = "allegroHand_0"
-TACTILE_TOPIC_PREFIXES = ["index_tip", "thumb_tip"]
 BACKGROUND_AUDIO_PATH = "/home/handlingteam2/HASA/user/pranav/example/script/util/beep.mp3"
 LEADER_SERIAL_PORT = os.environ.get("ALLEGRO_LEADER_PORT", "/dev/ttyUSB0")
 
+# The leader's first four joints operate the selected non-thumb finger; its
+# last four joints always operate the thumb. Allegro follower blocks are
+# index=0..3, middle=4..7, ring=8..11, thumb=12..15.
+FINGER_MODES = {
+    "thumb+index": {
+        "joint_indices": (0, 1, 2, 3, 12, 13, 14, 15),
+        "tactile_topics": ("thumb_tip", "index_tip"),
+    },
+    "thumb+middle": {
+        "joint_indices": (4, 5, 6, 7, 12, 13, 14, 15),
+        "tactile_topics": ("thumb_tip", "middle_tip"),
+    },
+}
+
 class XelAllegro:
     def __init__(self, ctrl_freq: float = CTRL_FREQ, hand_topic_prefix: str = HAND_TOPIC_PREFIX,
-                 tactile_topic_prefixes: list = TACTILE_TOPIC_PREFIXES):
+                 tactile_topic_prefixes=()):
         self._hand = AllegroHand(hand_topic_prefix=hand_topic_prefix, ctrl_freq=ctrl_freq)
         self._tactile_sensors = {
             prefix: TactileSubscriber(topic_prefix=prefix)
@@ -274,9 +288,26 @@ def flatten_dict(d, parent_key='', sep='_'):
     return items
 
 
-def main():
+def parse_args(args=None):
+    parser = argparse.ArgumentParser(
+        description="Collect Allegro leader data using one thumb/finger pair."
+    )
+    parser.add_argument(
+        "--fingers",
+        choices=tuple(FINGER_MODES),
+        default="thumb+index",
+        help="Follower fingers controlled by the eight-joint leader (default: %(default)s).",
+    )
+    return parser.parse_args(args)
+
+
+def main(args=None):
+    parsed_args = parse_args(args)
+    finger_mode = FINGER_MODES[parsed_args.fingers]
+    finger_indices = finger_mode["joint_indices"]
+    tactile_topic_prefixes = finger_mode["tactile_topics"]
+
     def move_leader_to_initial_pos(teleop, initial_pos_16dof):
-        finger_indices = [0, 1, 2, 3, 12, 13, 14, 15]
         init_cmd = np.array([initial_pos_16dof[i] for i in finger_indices])
         directions = teleop.directions
         offsets = teleop.offsets
@@ -294,7 +325,7 @@ def main():
     node_exec.spin_thread_start()
 
     robot = XelAllegro(ctrl_freq=CTRL_FREQ, hand_topic_prefix=HAND_TOPIC_PREFIX,
-                       tactile_topic_prefixes=TACTILE_TOPIC_PREFIXES)
+                       tactile_topic_prefixes=tactile_topic_prefixes)
     teleop = AllegroPrecesionGrasp(wall_kp=0.0, port=LEADER_SERIAL_PORT)
     controller = DataCollectorController()
     audio_player = AudioPlayer(BACKGROUND_AUDIO_PATH)
@@ -302,27 +333,47 @@ def main():
     keyboard_handler = KeyboardHandler(controller, robot, teleop, audio_player, video_recorder)
 
     print(f"[Info] MAX_TIMESTEP = {MAX_TIMESTEP}")
+    print(f"[Info] Finger mode = {parsed_args.fingers}")
+    print(f"[Info] Active follower joints = {finger_indices}")
+    print(f"[Info] Tactile sensors = {tactile_topic_prefixes}")
 
     # === Step 1: Move to resting pose and collect tactile offset ===
     RESTING_POS = np.zeros(16)
     print("[Info] Moving Allegro Hand to resting position...")
     robot.set_joint_command(RESTING_POS)
+
+    # Match manus_datacollection.py: let tactile streams settle, verify each
+    # sensor, and use the same observation as the resting baseline.
+    print("\n[Info] Checking tactile sensors...")
     node_exec.sleep()
+    time.sleep(1.0)
 
-    tactile_offset = robot.get_observation()["tactile"]
-    print("[Debug] Tactile offset recorded at resting position:")
-    for k, v in tactile_offset.items():
-        print(f"  {k}: mean={np.mean(v):.2f}, max={np.max(v):.2f}, min={np.min(v):.2f}")
+    obs = robot.get_observation()
+    for sensor_name, sensor_data in obs["tactile"].items():
+        if sensor_data is not None:
+            print(f"  [{sensor_name}] OK - sensor working")
+        else:
+            print(f"  [{sensor_name}] WARNING: No data received!")
 
+    # Record tactile offset at the current resting position.
+    tactile_offset = obs["tactile"]
+    valid_offset = all(v is not None for v in tactile_offset.values())
+    if not valid_offset:
+        print("[Warning] Some tactile sensors returned None. Offset subtraction may be incomplete.")
+
+    # Match manus_datacollection.py's None-safe offset verification.
     zeroed_test = robot.get_observation()["tactile"]
     print("[Debug] Verifying offset subtraction:")
     for k in zeroed_test:
-        diff = zeroed_test[k] - tactile_offset[k]
-        print(f"  {k}: mean={np.mean(diff):.2f}, max={np.max(diff):.2f}, min={np.min(diff):.2f}")
-        if np.max(np.abs(diff)) > 50:
-            print(f"[Warning] Offset subtraction for {k} not near zero!")
+        if zeroed_test[k] is not None and tactile_offset.get(k) is not None:
+            diff = zeroed_test[k] - tactile_offset[k]
+            print(f"  {k}: mean={np.mean(diff):.2f}, max={np.max(diff):.2f}, min={np.min(diff):.2f}")
+            if np.max(np.abs(diff)) > 50:
+                print(f"  [Warning] Offset subtraction for {k} not near zero!")
+        else:
+            print(f"  {k}: skipped (no data)")
 
-    print("[Info] Press 's' to start recording when ready.")
+    print("\n[Info] Press 's' to start recording when ready.")
 
     try:
         while not controller.should_exit():
@@ -330,7 +381,6 @@ def main():
                 try:
                     leader_cmd = teleop.update()
                     follower_cmd = np.zeros(16, dtype=float)
-                    finger_indices = [0, 1, 2, 3, 12, 13, 14, 15]
                     for i, idx in enumerate(finger_indices):
                         follower_cmd[idx] = leader_cmd[i]
                     robot.set_joint_command(follower_cmd)
@@ -352,7 +402,6 @@ def main():
 
                 leader_cmd = teleop.update()
                 follower_cmd = np.zeros(16, dtype=float)
-                finger_indices = [0, 1, 2, 3, 12, 13, 14, 15]
                 for i, idx in enumerate(finger_indices):
                     follower_cmd[idx] = leader_cmd[i]
 
@@ -367,8 +416,13 @@ def main():
                 node_exec.sleep()
 
                 obs = robot.set_joint_command(follower_cmd)
+                # Match manus_datacollection.py: subtract only when both the
+                # live reading and its resting baseline are valid.
                 obs["tactile"] = {
-                    k: obs["tactile"][k] - tactile_offset[k] for k in obs["tactile"]
+                    k: (obs["tactile"][k] - tactile_offset[k]
+                        if obs["tactile"][k] is not None and tactile_offset.get(k) is not None
+                        else obs["tactile"][k])
+                    for k in obs["tactile"]
                 }
 
                 file_path = os.path.join(episode_dir, f"timestep{ts}.pkl")
