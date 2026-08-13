@@ -1437,6 +1437,470 @@ def _profile_mean_trace(arr: np.ndarray, steps: int) -> np.ndarray:
     return trace[:steps]
 
 
+def _touch_sequence(value) -> Optional[np.ndarray]:
+    if value is None:
+        return None
+    arr = tensor_to_numpy(value)
+    arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+    if arr.ndim == 0:
+        return arr.reshape(1, 1, 1).astype(np.float32, copy=False)
+    if arr.ndim == 1:
+        return arr.reshape(1, 1, -1).astype(np.float32, copy=False)
+    if arr.ndim == 2:
+        return arr[:, None, :].astype(np.float32, copy=False)
+    if arr.ndim == 3:
+        return arr.astype(np.float32, copy=False)
+    return arr.reshape(arr.shape[0], arr.shape[1], -1).astype(np.float32, copy=False)
+
+
+def _touch_mapping_value(mapping: Optional[Mapping], key: str, name: str) -> Optional[np.ndarray]:
+    if not mapping:
+        return None
+    if key in mapping:
+        return _touch_sequence(mapping[key])
+    if name in mapping:
+        return _touch_sequence(mapping[name])
+    return None
+
+
+def _touch_unscale(
+    arr: Optional[np.ndarray],
+    key: str,
+    dataset_param: Optional[Mapping],
+    scaling_param: Optional[Mapping],
+) -> Optional[np.ndarray]:
+    if arr is None:
+        return None
+    dataset_param = dataset_param or {}
+    if scaling_param is None:
+        scaling_param = load_scaling_param(dataset_param)
+    return maybe_unscale(arr, key, dataset_param, scaling_param or {})
+
+
+def _touch_sample(arr: Optional[np.ndarray], sample_index: int) -> Optional[np.ndarray]:
+    if arr is None:
+        return None
+    if arr.shape[0] <= 0:
+        return None
+    index = min(max(int(sample_index), 0), arr.shape[0] - 1)
+    return np.asarray(arr[index], dtype=np.float32)
+
+
+def _touch_location_map(arr: Optional[np.ndarray]) -> Tuple[Optional[np.ndarray], str]:
+    if arr is None:
+        return None, "taxel"
+    arr = np.asarray(arr, dtype=np.float32)
+    if arr.ndim == 1:
+        arr = arr[None, :]
+    arr = arr.reshape(arr.shape[0], -1)
+    if arr.shape[-1] % 3 == 0 and arr.shape[-1] >= 3:
+        values = arr.reshape(arr.shape[0], arr.shape[-1] // 3, 3)
+        return np.linalg.norm(values, axis=-1).T.astype(np.float32, copy=False), "taxel"
+    return np.abs(arr).T.astype(np.float32, copy=False), "taxel/channel"
+
+
+def _touch_peak(matrix: Optional[np.ndarray], steps: int) -> Tuple[np.ndarray, np.ndarray]:
+    if matrix is None or matrix.size == 0:
+        return (
+            np.full((steps,), -1, dtype=np.int64),
+            np.full((steps,), np.nan, dtype=np.float32),
+        )
+    matrix = np.nan_to_num(np.asarray(matrix, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+    peak_idx = np.argmax(matrix, axis=0).astype(np.int64, copy=False)
+    peak_value = matrix[peak_idx, np.arange(matrix.shape[1])]
+    return peak_idx, peak_value.astype(np.float32, copy=False)
+
+
+def _touch_series(matrix: Optional[np.ndarray], steps: int) -> np.ndarray:
+    if matrix is None or matrix.size == 0:
+        return np.full((steps,), np.nan, dtype=np.float32)
+    return np.nanmean(matrix, axis=0).astype(np.float32, copy=False)
+
+
+def _touch_plot_tag(tag: str) -> str:
+    text = str(tag or "inference")
+    safe = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in text)
+    return safe.strip("_") or "inference"
+
+
+def plot_touch_decomposition_profiles(
+    *,
+    total_touch: Mapping[str, object],
+    self_touch: Mapping[str, object],
+    plot_dir: str,
+    dataset_param: Optional[Mapping] = None,
+    scaling_param: Optional[Mapping] = None,
+    selftouch_dataset_param: Optional[Mapping] = None,
+    selftouch_scaling_param: Optional[Mapping] = None,
+    raw_touch: Optional[Mapping[str, object]] = None,
+    external_touch: Optional[Mapping[str, object]] = None,
+    finger_names: Sequence[str] = FINGER_ORDER,
+    finger_keys: Optional[Sequence[str]] = None,
+    timesteps: Optional[Sequence[int]] = None,
+    sample_index: int = 0,
+    tag: str = "inference",
+    title: str = "Self-touch and external-touch decomposition",
+) -> Dict[str, str]:
+    """Save per-fingertip touch decomposition heatmaps and peak-taxel traces.
+
+    ``total_touch`` is the full tactile prediction/observation. ``self_touch`` is
+    the frozen self-touch estimate. When ``external_touch`` is absent, the plot
+    derives external touch as total minus self-touch in raw tactile units.
+    """
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("matplotlib is not installed; skipped touch decomposition plot.")
+        return {}
+
+    keys = list(finger_keys) if finger_keys is not None else [FINGER_TO_KEY[name] for name in finger_names]
+    names = [str(name).replace("tactile_", "").replace("_tip", "") for name in finger_names]
+    os.makedirs(plot_dir, exist_ok=True)
+
+    profiles = []
+    for name, key in zip(names, keys):
+        total_arr = _touch_unscale(
+            _touch_mapping_value(total_touch, key, name),
+            key,
+            dataset_param,
+            scaling_param,
+        )
+        self_arr = _touch_unscale(
+            _touch_mapping_value(self_touch, key, name),
+            key,
+            selftouch_dataset_param or dataset_param,
+            selftouch_scaling_param if selftouch_scaling_param is not None else scaling_param,
+        )
+        raw_arr = _touch_unscale(
+            _touch_mapping_value(raw_touch, key, name),
+            key,
+            dataset_param,
+            scaling_param,
+        )
+        external_arr = _touch_unscale(
+            _touch_mapping_value(external_touch, key, name),
+            key,
+            dataset_param,
+            scaling_param,
+        )
+
+        sequences = [arr for arr in (total_arr, self_arr, raw_arr, external_arr) if arr is not None]
+        if not sequences:
+            continue
+        steps = min(int(arr.shape[1]) for arr in sequences)
+        dims = min(int(arr.shape[-1]) for arr in sequences)
+        if steps <= 0 or dims <= 0:
+            continue
+
+        def crop(arr):
+            if arr is None:
+                return None
+            return arr[:, :steps, :dims]
+
+        total_sample = _touch_sample(crop(total_arr), sample_index)
+        self_sample = _touch_sample(crop(self_arr), sample_index)
+        raw_sample = _touch_sample(crop(raw_arr), sample_index)
+        external_sample = _touch_sample(crop(external_arr), sample_index)
+        if external_sample is None and self_sample is not None:
+            base = total_sample if total_sample is not None else raw_sample
+            if base is not None:
+                external_sample = base - self_sample
+
+        total_matrix, ylabel = _touch_location_map(total_sample)
+        self_matrix, _ = _touch_location_map(self_sample)
+        external_matrix, _ = _touch_location_map(external_sample)
+        raw_matrix, _ = _touch_location_map(raw_sample)
+        if self_matrix is None and external_matrix is None:
+            continue
+
+        profiles.append(
+            {
+                "name": name,
+                "key": key,
+                "steps": steps,
+                "ylabel": ylabel,
+                "total": total_matrix,
+                "self": self_matrix,
+                "external": external_matrix,
+                "raw": raw_matrix,
+            }
+        )
+
+    if not profiles:
+        return {}
+
+    max_steps = max(profile["steps"] for profile in profiles)
+    if timesteps is None:
+        base_timesteps = np.arange(max_steps, dtype=np.int64)
+    else:
+        base_timesteps = np.asarray(timesteps, dtype=np.int64).reshape(-1)
+        if base_timesteps.size < max_steps:
+            pad_start = int(base_timesteps[-1]) + 1 if base_timesteps.size else 0
+            pad = np.arange(pad_start, pad_start + max_steps - base_timesteps.size, dtype=np.int64)
+            base_timesteps = np.concatenate([base_timesteps, pad])
+
+    tag = _touch_plot_tag(tag)
+    fig, axes = plt.subplots(
+        len(profiles),
+        3,
+        figsize=(17.0, max(3.2 * len(profiles), 4.2)),
+        constrained_layout=True,
+    )
+    axes = np.asarray(axes).reshape(len(profiles), 3)
+    csv_path = os.path.join(plot_dir, f"touch_decomposition_{tag}.csv")
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            [
+                "finger",
+                "timestep",
+                "total_mean_magnitude",
+                "raw_mean_magnitude",
+                "selftouch_mean_magnitude",
+                "external_mean_magnitude",
+                "total_peak_taxel",
+                "raw_peak_taxel",
+                "selftouch_peak_taxel",
+                "external_peak_taxel",
+                "total_peak_magnitude",
+                "raw_peak_magnitude",
+                "selftouch_peak_magnitude",
+                "external_peak_magnitude",
+            ]
+        )
+
+        for row_idx, profile in enumerate(profiles):
+            name = profile["name"]
+            steps = profile["steps"]
+            ts = base_timesteps[:steps]
+            color = FINGER_COLORS.get(name, "#3f7fba")
+            total_matrix = profile["total"]
+            raw_matrix = profile["raw"]
+            self_matrix = profile["self"]
+            external_matrix = profile["external"]
+
+            total_series = _touch_series(total_matrix, steps)
+            raw_series = _touch_series(raw_matrix, steps)
+            self_series = _touch_series(self_matrix, steps)
+            external_series = _touch_series(external_matrix, steps)
+            total_peak_idx, total_peak_value = _touch_peak(total_matrix, steps)
+            raw_peak_idx, raw_peak_value = _touch_peak(raw_matrix, steps)
+            self_peak_idx, self_peak_value = _touch_peak(self_matrix, steps)
+            external_peak_idx, external_peak_value = _touch_peak(external_matrix, steps)
+
+            ax_trace, ax_self, ax_external = axes[row_idx]
+            if total_matrix is not None:
+                ax_trace.plot(ts, total_series, color="black", linewidth=1.8, label="total")
+            if raw_matrix is not None:
+                ax_trace.plot(ts, raw_series, color="#7a7a7a", linewidth=1.3, alpha=0.85, label="raw")
+            if self_matrix is not None:
+                ax_trace.plot(ts, self_series, color=color, linewidth=1.9, label="self-touch")
+            if external_matrix is not None:
+                ax_trace.plot(ts, external_series, color="#d95f02", linewidth=1.9, label="external")
+            ax_trace.set_title(f"{name.capitalize()} mean contact magnitude", fontsize=9)
+            ax_trace.set_ylabel("mean magnitude")
+            ax_trace.grid(True, alpha=0.25)
+            ax_trace.legend(fontsize=7, loc="best")
+
+            heatmap_values = [
+                matrix.reshape(-1)
+                for matrix in (self_matrix, external_matrix)
+                if matrix is not None and matrix.size
+            ]
+            if heatmap_values:
+                finite = np.concatenate(heatmap_values)
+                finite = finite[np.isfinite(finite)]
+                vmax = float(np.percentile(finite, 99)) if finite.size else 1.0
+            else:
+                vmax = 1.0
+            vmax = max(vmax, 1e-6)
+            extent = [
+                float(ts[0]) if ts.size else 0.0,
+                float(ts[-1] + 1) if ts.size else 1.0,
+                -0.5,
+                float((self_matrix if self_matrix is not None else external_matrix).shape[0]) - 0.5,
+            ]
+
+            for ax, matrix, peaks, subtitle, cmap in (
+                (ax_self, self_matrix, self_peak_idx, "self-touch location", "magma"),
+                (ax_external, external_matrix, external_peak_idx, "external-touch location", "viridis"),
+            ):
+                if matrix is None:
+                    ax.set_axis_off()
+                    ax.text(0.5, 0.5, "unavailable", ha="center", va="center", transform=ax.transAxes)
+                    continue
+                image = ax.imshow(
+                    matrix,
+                    aspect="auto",
+                    origin="lower",
+                    interpolation="nearest",
+                    extent=extent,
+                    cmap=cmap,
+                    vmin=0.0,
+                    vmax=vmax,
+                )
+                if steps > 1:
+                    ax.plot(ts, peaks, color="white", linewidth=1.1, alpha=0.88, label="peak taxel")
+                ax.set_title(f"{name.capitalize()} {subtitle}", fontsize=9)
+                ax.set_ylabel(profile["ylabel"])
+                ax.grid(False)
+                if steps > 1:
+                    ax.legend(fontsize=7, loc="upper right")
+                fig.colorbar(image, ax=ax, fraction=0.030, pad=0.012)
+
+            for index in range(steps):
+                writer.writerow(
+                    [
+                        name,
+                        int(ts[index]),
+                        _csv_value(total_series[index]),
+                        _csv_value(raw_series[index]),
+                        _csv_value(self_series[index]),
+                        _csv_value(external_series[index]),
+                        int(total_peak_idx[index]),
+                        int(raw_peak_idx[index]),
+                        int(self_peak_idx[index]),
+                        int(external_peak_idx[index]),
+                        _csv_value(total_peak_value[index]),
+                        _csv_value(raw_peak_value[index]),
+                        _csv_value(self_peak_value[index]),
+                        _csv_value(external_peak_value[index]),
+                    ]
+                )
+
+    for ax in axes[-1]:
+        ax.set_xlabel("Timestep")
+    fig.suptitle(title, fontsize=12)
+    image_path = os.path.join(plot_dir, f"touch_decomposition_{tag}.png")
+    fig.savefig(image_path, dpi=160)
+    plt.close(fig)
+    return {"touch_decomposition": image_path, "touch_decomposition_csv": csv_path}
+
+
+def _touch_taxel_vector_sequence(sample: Optional[np.ndarray]) -> Optional[np.ndarray]:
+    if sample is None:
+        return None
+    sample = np.nan_to_num(
+        np.asarray(sample, dtype=np.float32),
+        nan=0.0,
+        posinf=0.0,
+        neginf=0.0,
+    )
+    if sample.ndim == 1:
+        sample = sample[None, :]
+    sample = sample.reshape(sample.shape[0], -1)
+    if sample.shape[-1] % 3 == 0 and sample.shape[-1] >= 3:
+        return sample.reshape(sample.shape[0], sample.shape[-1] // 3, 3)
+    out = np.zeros((sample.shape[0], sample.shape[-1], 3), dtype=np.float32)
+    out[..., 2] = sample
+    return out
+
+
+def save_touch_decomposition_visualization(
+    *,
+    total_touch: Mapping[str, object],
+    self_touch: Mapping[str, object],
+    plot_dir: str,
+    dataset_param: Optional[Mapping] = None,
+    scaling_param: Optional[Mapping] = None,
+    selftouch_dataset_param: Optional[Mapping] = None,
+    selftouch_scaling_param: Optional[Mapping] = None,
+    raw_touch: Optional[Mapping[str, object]] = None,
+    external_touch: Optional[Mapping[str, object]] = None,
+    finger_names: Sequence[str] = FINGER_ORDER,
+    finger_keys: Optional[Sequence[str]] = None,
+    sample_index: int = 0,
+    tag: str = "inference",
+    fps: int = 10,
+    frame_stride: int = 1,
+) -> Dict[str, str]:
+    """Save a four-fingertip XELA-style video for self-touch/object-touch state."""
+    try:
+        from vis_tac import FourFingerTouchStateVisualizer
+    except Exception as exc:
+        print(f"[warn] failed to import tactile visualizer: {exc}")
+        return {}
+
+    keys = list(finger_keys) if finger_keys is not None else [FINGER_TO_KEY[name] for name in finger_names]
+    names = [str(name).replace("tactile_", "").replace("_tip", "") for name in finger_names]
+    os.makedirs(plot_dir, exist_ok=True)
+
+    touch_state = {}
+    any_data = False
+    for name, key in zip(names, keys):
+        total_arr = _touch_unscale(
+            _touch_mapping_value(total_touch, key, name),
+            key,
+            dataset_param,
+            scaling_param,
+        )
+        self_arr = _touch_unscale(
+            _touch_mapping_value(self_touch, key, name),
+            key,
+            selftouch_dataset_param or dataset_param,
+            selftouch_scaling_param if selftouch_scaling_param is not None else scaling_param,
+        )
+        raw_arr = _touch_unscale(
+            _touch_mapping_value(raw_touch, key, name),
+            key,
+            dataset_param,
+            scaling_param,
+        )
+        external_arr = _touch_unscale(
+            _touch_mapping_value(external_touch, key, name),
+            key,
+            dataset_param,
+            scaling_param,
+        )
+        sequences = [arr for arr in (total_arr, self_arr, raw_arr, external_arr) if arr is not None]
+        if not sequences:
+            touch_state[name] = {}
+            continue
+        steps = min(int(arr.shape[1]) for arr in sequences)
+        dims = min(int(arr.shape[-1]) for arr in sequences)
+        if steps <= 0 or dims <= 0:
+            touch_state[name] = {}
+            continue
+
+        def crop(arr):
+            if arr is None:
+                return None
+            return arr[:, :steps, :dims]
+
+        total_sample = _touch_sample(crop(total_arr), sample_index)
+        self_sample = _touch_sample(crop(self_arr), sample_index)
+        raw_sample = _touch_sample(crop(raw_arr), sample_index)
+        object_sample = _touch_sample(crop(external_arr), sample_index)
+        if object_sample is None and self_sample is not None:
+            base = total_sample if total_sample is not None else raw_sample
+            if base is not None:
+                object_sample = base - self_sample
+
+        self_vectors = _touch_taxel_vector_sequence(self_sample)
+        object_vectors = _touch_taxel_vector_sequence(object_sample)
+        touch_state[name] = {
+            "selftouch": self_vectors,
+            "object": object_vectors,
+        }
+        any_data = any_data or self_vectors is not None or object_vectors is not None
+
+    if not any_data:
+        return {}
+
+    tag = _touch_plot_tag(tag)
+    path = os.path.join(plot_dir, f"touch_decomposition_{tag}_visualizer.mp4")
+    visualizer = FourFingerTouchStateVisualizer(fingers=names)
+    video_path = visualizer.export_touch_state_video(
+        touch_state,
+        path=path,
+        fps=max(int(fps or 10), 1),
+        frame_stride=max(int(frame_stride or 1), 1),
+    )
+    return {"touch_decomposition_video": video_path}
+
+
 def _save_tactile_profile_plot(
     *,
     profiles: Sequence[Mapping],
