@@ -10,7 +10,7 @@ if ffmpeg_bin:
     matplotlib.rcParams["animation.ffmpeg_path"] = ffmpeg_bin
 
 
-XELA_COORDS_INDEX_LIKE = [
+XELA_COORDS_INDEX = [
     (5, 3), (5, 2), (5, 1), (5, 0),
     (4, 4), (4, 3), (4, 2), (4, 1), (4, 0),
     (3, 5), (3, 4), (3, 3), (3, 2), (3, 1), (3, 0),
@@ -28,11 +28,16 @@ XELA_COORDS_THUMB = [
     (0, 3), (0, 0), (0, 1), (0, 2)
 ]
 
+XELA_COORDS_INDEX_LIKE = XELA_COORDS_INDEX
+
 FINGER_COORDS = {
-    "index": XELA_COORDS_INDEX_LIKE,
+    "index": XELA_COORDS_INDEX,
     "thumb": XELA_COORDS_THUMB,
-    "middle": XELA_COORDS_INDEX_LIKE,
-    "ring": XELA_COORDS_INDEX_LIKE,
+}
+
+UNVERIFIED_FINGER_COORD_FALLBACKS = {
+    "middle": XELA_COORDS_INDEX,
+    "ring": XELA_COORDS_INDEX,
 }
 
 
@@ -41,7 +46,7 @@ class DualXelaVisualizer:
         self.index_obs = np.zeros((30, 3))
         self.thumb_obs = np.zeros((30, 3))
 
-        self.remapped_coords_index = XELA_COORDS_INDEX_LIKE
+        self.remapped_coords_index = XELA_COORDS_INDEX
         self.remapped_coords_thumb = XELA_COORDS_THUMB
 
         self.setup_figure()
@@ -221,7 +226,14 @@ class FourFingerTouchStateVisualizer:
         return out
 
     def _coords_for_finger(self, finger, taxel_count):
-        coords = list(FINGER_COORDS.get(finger, XELA_COORDS_INDEX_LIKE))
+        coords = FINGER_COORDS.get(finger)
+        if coords is None:
+            coords = UNVERIFIED_FINGER_COORD_FALLBACKS.get(finger, XELA_COORDS_INDEX)
+            print(
+                f"[vis] {finger} taxel layout is not PlotJuggler-verified; "
+                "using index fallback layout."
+            )
+        coords = list(coords)
         if len(coords) >= taxel_count:
             coords = coords[:taxel_count]
         else:
