@@ -190,6 +190,10 @@ class FourFingerTouchStateVisualizer:
         "selftouch": "magma",
         "object": "viridis",
     }
+    STATE_ARROW_COLORS = {
+        "selftouch": "#70f7ff",
+        "object": "#f4f4f4",
+    }
 
     def __init__(self, fingers=None, clim_max=None):
         self.fingers = tuple(fingers or self.FINGER_ORDER)
@@ -198,12 +202,16 @@ class FourFingerTouchStateVisualizer:
         self.fig, self.axes = plt.subplots(
             len(self.fingers),
             len(self.STATE_ORDER),
-            figsize=(9.5, 3.25 * len(self.fingers)),
+            figsize=(11.5, max(2.65 * len(self.fingers) + 1.2, 5.8)),
             squeeze=False,
+            gridspec_kw={"hspace": 0.22, "wspace": 0.10},
         )
         self.fig.patch.set_facecolor("black")
         self.fig.patch.set_alpha(1.0)
         self.artists = {}
+        self.state_mappables = {}
+        self.colorbars = {}
+        self._state_vmax = {state: 1.0 for state in self.STATE_ORDER}
         self._setup_figure()
 
     @staticmethod
@@ -257,12 +265,13 @@ class FourFingerTouchStateVisualizer:
                     y_coords,
                     c=np.zeros_like(x_coords),
                     cmap=self.STATE_CMAPS[state],
-                    s=640,
-                    edgecolors="white",
-                    linewidths=0.45,
+                    s=330,
+                    edgecolors="#e8e8e8",
+                    linewidths=0.55,
                     vmin=self.clim_min,
                     vmax=1.0,
                 )
+                self.state_mappables.setdefault(state, sc)
                 quiver = ax.quiver(
                     x_coords,
                     y_coords,
@@ -270,35 +279,52 @@ class FourFingerTouchStateVisualizer:
                     np.zeros_like(y_coords),
                     angles="xy",
                     scale_units="xy",
-                    scale=5,
-                    color="cyan" if state == "selftouch" else "white",
-                    width=0.007,
-                    alpha=0.86,
+                    scale=1,
+                    color=self.STATE_ARROW_COLORS[state],
+                    width=0.0034,
+                    headwidth=3.2,
+                    headlength=4.2,
+                    headaxislength=3.7,
+                    alpha=0.72,
                 )
                 peak = ax.scatter(
                     [x_coords[0]],
                     [y_coords[0]],
-                    s=900,
+                    s=520,
                     facecolors="none",
                     edgecolors="yellow",
-                    linewidths=2.0,
+                    linewidths=2.35,
                     visible=False,
                 )
-                ax.set_xlim(-1, 6)
-                ax.set_ylim(-1, 7)
+                ax.set_xlim(-0.8, 5.8)
+                ax.set_ylim(-0.8, 5.8)
                 ax.set_xticks([])
                 ax.set_yticks([])
                 ax.set_aspect("equal")
-                title = ax.text(
-                    0.5,
-                    0.98,
-                    f"{finger.capitalize()} {self.STATE_TITLES[state]}",
+                if row == 0:
+                    ax.set_title(self.STATE_TITLES[state], color="white", fontsize=12, pad=8)
+                if col == 0:
+                    ax.text(
+                        -0.13,
+                        0.5,
+                        finger.capitalize(),
+                        color="white",
+                        fontsize=10,
+                        ha="right",
+                        va="center",
+                        rotation=90,
+                        transform=ax.transAxes,
+                    )
+                value_text = ax.text(
+                    0.02,
+                    0.03,
+                    "",
                     color="white",
-                    fontsize=10,
-                    ha="center",
-                    va="top",
+                    fontsize=7.5,
+                    ha="left",
+                    va="bottom",
                     transform=ax.transAxes,
-                    bbox=dict(facecolor="black", edgecolor="none", alpha=0.58, pad=2.0),
+                    bbox=dict(facecolor="black", edgecolor="none", alpha=0.58, pad=1.6),
                 )
                 for spine in ax.spines.values():
                     spine.set_visible(False)
@@ -312,30 +338,49 @@ class FourFingerTouchStateVisualizer:
                     "peak": peak,
                     "x": x_coords,
                     "y": y_coords,
-                    "title": title,
+                    "value_text": value_text,
                 }
+        for col, state in enumerate(self.STATE_ORDER):
+            mappable = self.state_mappables.get(state)
+            if mappable is None:
+                continue
+            cbar = self.fig.colorbar(
+                mappable,
+                ax=self.axes[:, col].ravel().tolist(),
+                fraction=0.032,
+                pad=0.018,
+            )
+            cbar.set_label("magnitude", color="white", fontsize=8)
+            cbar.ax.yaxis.set_tick_params(color="white", labelcolor="white", labelsize=7)
+            cbar.outline.set_edgecolor("white")
+            self.colorbars[state] = cbar
 
     def _set_clim(self, touch_state):
-        if self.clim_max is not None:
-            vmax = float(self.clim_max)
-        else:
-            values = []
-            for finger_data in touch_state.values():
-                for state in self.STATE_ORDER:
+        for state in self.STATE_ORDER:
+            if self.clim_max is not None:
+                vmax = float(self.clim_max)
+            else:
+                values = []
+                for finger_data in touch_state.values():
                     arr = finger_data.get(state)
                     if arr is None:
                         continue
                     vec = self._as_taxel_vectors(arr)
                     values.append(np.linalg.norm(vec, axis=-1).reshape(-1))
-            if values:
-                finite = np.concatenate(values)
-                finite = finite[np.isfinite(finite)]
-                vmax = float(np.percentile(finite, 99)) if finite.size else 1.0
-            else:
-                vmax = 1.0
-        vmax = max(vmax, 1e-6)
-        for artist in self.artists.values():
-            artist["scatter"].set_clim(self.clim_min, vmax)
+                if values:
+                    finite = np.concatenate(values)
+                    finite = finite[np.isfinite(finite)]
+                    vmax = float(np.percentile(finite, 99)) if finite.size else 1.0
+                else:
+                    vmax = 1.0
+            vmax = max(vmax, 1e-6)
+            self._state_vmax[state] = vmax
+            for finger in self.fingers:
+                artist = self.artists.get((finger, state))
+                if artist is not None:
+                    artist["scatter"].set_clim(self.clim_min, vmax)
+            if state in self.colorbars and state in self.state_mappables:
+                self.colorbars[state].update_normal(self.state_mappables[state])
 
     def _normalise_touch_state(self, touch_state):
         frame_count = 1
@@ -365,13 +410,24 @@ class FourFingerTouchStateVisualizer:
                 obs = arr[frame_idx]
                 artist = self.artists[(finger, state)]
                 taxel_count = min(obs.shape[0], artist["x"].shape[0])
-                obs = obs[:taxel_count]
+                obs = np.nan_to_num(obs[:taxel_count], nan=0.0, posinf=0.0, neginf=0.0)
                 magnitudes = np.linalg.norm(obs, axis=-1)
                 artist["scatter"].set_offsets(
                     np.column_stack([artist["x"][:taxel_count], artist["y"][:taxel_count]])
                 )
                 artist["scatter"].set_array(magnitudes)
-                vectors = obs[:, :2]
+                lateral = obs[:, :2]
+                lateral_mag = np.linalg.norm(lateral, axis=-1)
+                vmax = max(float(self._state_vmax.get(state, 1.0)), 1e-6)
+                strength = np.clip(magnitudes / vmax, 0.0, 1.0)
+                arrow_length = np.where(strength > 0.08, 0.10 + 0.34 * strength, 0.0)
+                vectors = np.divide(
+                    lateral,
+                    lateral_mag[:, None],
+                    out=np.zeros_like(lateral, dtype=np.float32),
+                    where=lateral_mag[:, None] > 1e-6,
+                )
+                vectors = vectors * arrow_length[:, None]
                 artist["quiver"].set_offsets(
                     np.column_stack([artist["x"][:taxel_count], artist["y"][:taxel_count]])
                 )
@@ -379,15 +435,14 @@ class FourFingerTouchStateVisualizer:
                 if magnitudes.size:
                     peak_idx = int(np.argmax(magnitudes))
                     artist["peak"].set_offsets([[artist["x"][peak_idx], artist["y"][peak_idx]]])
-                    artist["peak"].set_visible(bool(magnitudes[peak_idx] > 0.0))
-                    peak_text = f" max={float(magnitudes[peak_idx]):.2f}"
+                    peak_visible = bool(magnitudes[peak_idx] > 0.02 * vmax)
+                    artist["peak"].set_visible(peak_visible)
+                    peak_text = f"peak {peak_idx}: {float(magnitudes[peak_idx]):.1f}" if peak_visible else ""
                 else:
                     artist["peak"].set_visible(False)
                     peak_text = ""
-                artist["title"].set_text(
-                    f"{finger.capitalize()} {self.STATE_TITLES[state]}{peak_text}"
-                )
-        self.fig.suptitle(f"Touch state frame {frame}", color="white", fontsize=13)
+                artist["value_text"].set_text(peak_text)
+        self.fig.suptitle(f"Touch states  |  frame {frame}", color="white", fontsize=13)
 
     def export_touch_state_video(self, touch_state, path, fps=10, frame_stride=1):
         touch_state = self._normalise_touch_state(touch_state)

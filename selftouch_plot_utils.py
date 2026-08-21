@@ -1499,6 +1499,80 @@ def _touch_location_map(arr: Optional[np.ndarray]) -> Tuple[Optional[np.ndarray]
     return np.abs(arr).T.astype(np.float32, copy=False), "taxel/channel"
 
 
+def _touch_vectors_to_flat(vectors: Optional[np.ndarray]) -> Optional[np.ndarray]:
+    if vectors is None:
+        return None
+    vectors = np.asarray(vectors, dtype=np.float32)
+    if vectors.ndim != 3:
+        return vectors
+    return vectors.reshape(vectors.shape[0], -1)
+
+
+def _touch_scale_vectors_to_magnitude(vectors: np.ndarray, target_magnitude: np.ndarray) -> np.ndarray:
+    vectors = np.asarray(vectors, dtype=np.float32)
+    target_magnitude = np.asarray(target_magnitude, dtype=np.float32)
+    magnitude = np.linalg.norm(vectors, axis=-1)
+    scale = np.divide(
+        target_magnitude,
+        magnitude,
+        out=np.zeros_like(target_magnitude, dtype=np.float32),
+        where=magnitude > 1e-6,
+    )
+    return vectors * scale[..., None]
+
+
+def _touch_decompose_vectors_for_display(
+    base_sample: Optional[np.ndarray],
+    self_sample: Optional[np.ndarray],
+    external_sample: Optional[np.ndarray] = None,
+) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+    """Return nonnegative self/object components for plotting.
+
+    The frozen self-touch model can occasionally predict a larger vector than
+    the total tactile stream. For display, clamp that component to the available
+    total magnitude so the residual does not become a large artificial object
+    touch after taking vector norms.
+    """
+    self_vectors = _touch_taxel_vector_sequence(self_sample)
+    external_vectors = _touch_taxel_vector_sequence(external_sample)
+    base_vectors = _touch_taxel_vector_sequence(base_sample)
+    if base_vectors is None or self_vectors is None:
+        return self_vectors, external_vectors
+
+    steps = min(base_vectors.shape[0], self_vectors.shape[0])
+    taxels = min(base_vectors.shape[1], self_vectors.shape[1])
+    if steps <= 0 or taxels <= 0:
+        return self_vectors, external_vectors
+
+    base = base_vectors[:steps, :taxels]
+    self_part = self_vectors[:steps, :taxels]
+    base_mag = np.linalg.norm(base, axis=-1)
+    self_mag = np.linalg.norm(self_part, axis=-1)
+    clipped_self_mag = np.minimum(base_mag, self_mag)
+    clipped_self = _touch_scale_vectors_to_magnitude(self_part, clipped_self_mag)
+
+    if external_vectors is not None:
+        external_steps = min(external_vectors.shape[0], steps)
+        external_taxels = min(external_vectors.shape[1], taxels)
+        return clipped_self[:external_steps, :external_taxels], external_vectors[:external_steps, :external_taxels]
+
+    residual_mag = np.maximum(base_mag - clipped_self_mag, 0.0)
+    residual = base - clipped_self
+    residual_norm = np.linalg.norm(residual, axis=-1)
+    base_norm = np.maximum(base_mag, 1e-6)
+    residual_dir = np.divide(
+        residual,
+        residual_norm[..., None],
+        out=np.zeros_like(residual, dtype=np.float32),
+        where=residual_norm[..., None] > 1e-6,
+    )
+    base_dir = base / base_norm[..., None]
+    use_residual = residual_norm[..., None] > 1e-6
+    direction = np.where(use_residual, residual_dir, base_dir)
+    external_part = direction * residual_mag[..., None]
+    return clipped_self, external_part
+
+
 def _touch_peak(matrix: Optional[np.ndarray], steps: int) -> Tuple[np.ndarray, np.ndarray]:
     if matrix is None or matrix.size == 0:
         return (
@@ -1541,11 +1615,12 @@ def plot_touch_decomposition_profiles(
     tag: str = "inference",
     title: str = "Self-touch and external-touch decomposition",
 ) -> Dict[str, str]:
-    """Save per-fingertip touch decomposition heatmaps and peak-taxel traces.
+    """Save per-fingertip touch decomposition mean-magnitude traces.
 
     ``total_touch`` is the full tactile prediction/observation. ``self_touch`` is
     the frozen self-touch estimate. When ``external_touch`` is absent, the plot
-    derives external touch as total minus self-touch in raw tactile units.
+    shows a nonnegative residual component after clamping self-touch to the
+    available total magnitude.
     """
     try:
         import matplotlib
@@ -1603,14 +1678,16 @@ def plot_touch_decomposition_profiles(
         self_sample = _touch_sample(crop(self_arr), sample_index)
         raw_sample = _touch_sample(crop(raw_arr), sample_index)
         external_sample = _touch_sample(crop(external_arr), sample_index)
-        if external_sample is None and self_sample is not None:
-            base = total_sample if total_sample is not None else raw_sample
-            if base is not None:
-                external_sample = base - self_sample
+        base_sample = total_sample if total_sample is not None else raw_sample
+        self_vectors, external_vectors = _touch_decompose_vectors_for_display(
+            base_sample,
+            self_sample,
+            external_sample,
+        )
 
         total_matrix, ylabel = _touch_location_map(total_sample)
-        self_matrix, _ = _touch_location_map(self_sample)
-        external_matrix, _ = _touch_location_map(external_sample)
+        self_matrix, _ = _touch_location_map(_touch_vectors_to_flat(self_vectors))
+        external_matrix, _ = _touch_location_map(_touch_vectors_to_flat(external_vectors))
         raw_matrix, _ = _touch_location_map(raw_sample)
         if self_matrix is None and external_matrix is None:
             continue
@@ -1644,11 +1721,12 @@ def plot_touch_decomposition_profiles(
     tag = _touch_plot_tag(tag)
     fig, axes = plt.subplots(
         len(profiles),
-        3,
-        figsize=(17.0, max(3.2 * len(profiles), 4.2)),
+        1,
+        figsize=(12.5, max(2.65 * len(profiles), 4.0)),
+        sharex=True,
         constrained_layout=True,
     )
-    axes = np.asarray(axes).reshape(len(profiles), 3)
+    axes = np.asarray(axes).reshape(len(profiles))
     csv_path = os.path.join(plot_dir, f"touch_decomposition_{tag}.csv")
     with open(csv_path, "w", newline="") as f:
         writer = csv.writer(f)
@@ -1690,65 +1768,24 @@ def plot_touch_decomposition_profiles(
             self_peak_idx, self_peak_value = _touch_peak(self_matrix, steps)
             external_peak_idx, external_peak_value = _touch_peak(external_matrix, steps)
 
-            ax_trace, ax_self, ax_external = axes[row_idx]
+            ax_trace = axes[row_idx]
             if total_matrix is not None:
                 ax_trace.plot(ts, total_series, color="black", linewidth=1.8, label="total")
-            if raw_matrix is not None:
-                ax_trace.plot(ts, raw_series, color="#7a7a7a", linewidth=1.3, alpha=0.85, label="raw")
             if self_matrix is not None:
                 ax_trace.plot(ts, self_series, color=color, linewidth=1.9, label="self-touch")
             if external_matrix is not None:
                 ax_trace.plot(ts, external_series, color="#d95f02", linewidth=1.9, label="external")
-            ax_trace.set_title(f"{name.capitalize()} mean contact magnitude", fontsize=9)
+            if raw_matrix is not None:
+                ax_trace.plot(ts, raw_series, color="#7a7a7a", linewidth=1.2, alpha=0.70, label="raw")
+            ax_trace.set_title(f"{name.capitalize()} mean contact magnitude", fontsize=10)
             ax_trace.set_ylabel("mean magnitude")
             ax_trace.grid(True, alpha=0.25)
-            ax_trace.legend(fontsize=7, loc="best")
-
-            heatmap_values = [
-                matrix.reshape(-1)
-                for matrix in (self_matrix, external_matrix)
-                if matrix is not None and matrix.size
-            ]
-            if heatmap_values:
-                finite = np.concatenate(heatmap_values)
-                finite = finite[np.isfinite(finite)]
-                vmax = float(np.percentile(finite, 99)) if finite.size else 1.0
-            else:
-                vmax = 1.0
-            vmax = max(vmax, 1e-6)
-            extent = [
-                float(ts[0]) if ts.size else 0.0,
-                float(ts[-1] + 1) if ts.size else 1.0,
-                -0.5,
-                float((self_matrix if self_matrix is not None else external_matrix).shape[0]) - 0.5,
-            ]
-
-            for ax, matrix, peaks, subtitle, cmap in (
-                (ax_self, self_matrix, self_peak_idx, "self-touch location", "magma"),
-                (ax_external, external_matrix, external_peak_idx, "external-touch location", "viridis"),
-            ):
-                if matrix is None:
-                    ax.set_axis_off()
-                    ax.text(0.5, 0.5, "unavailable", ha="center", va="center", transform=ax.transAxes)
-                    continue
-                image = ax.imshow(
-                    matrix,
-                    aspect="auto",
-                    origin="lower",
-                    interpolation="nearest",
-                    extent=extent,
-                    cmap=cmap,
-                    vmin=0.0,
-                    vmax=vmax,
-                )
-                if steps > 1:
-                    ax.plot(ts, peaks, color="white", linewidth=1.1, alpha=0.88, label="peak taxel")
-                ax.set_title(f"{name.capitalize()} {subtitle}", fontsize=9)
-                ax.set_ylabel(profile["ylabel"])
-                ax.grid(False)
-                if steps > 1:
-                    ax.legend(fontsize=7, loc="upper right")
-                fig.colorbar(image, ax=ax, fraction=0.030, pad=0.012)
+            ax_trace.legend(
+                fontsize=8,
+                loc="upper right",
+                ncol=4,
+                framealpha=0.92,
+            )
 
             for index in range(steps):
                 writer.writerow(
@@ -1770,8 +1807,7 @@ def plot_touch_decomposition_profiles(
                     ]
                 )
 
-    for ax in axes[-1]:
-        ax.set_xlabel("Timestep")
+    axes[-1].set_xlabel("Timestep")
     fig.suptitle(title, fontsize=12)
     image_path = os.path.join(plot_dir, f"touch_decomposition_{tag}.png")
     fig.savefig(image_path, dpi=160)
@@ -1873,13 +1909,12 @@ def save_touch_decomposition_visualization(
         self_sample = _touch_sample(crop(self_arr), sample_index)
         raw_sample = _touch_sample(crop(raw_arr), sample_index)
         object_sample = _touch_sample(crop(external_arr), sample_index)
-        if object_sample is None and self_sample is not None:
-            base = total_sample if total_sample is not None else raw_sample
-            if base is not None:
-                object_sample = base - self_sample
-
-        self_vectors = _touch_taxel_vector_sequence(self_sample)
-        object_vectors = _touch_taxel_vector_sequence(object_sample)
+        base_sample = total_sample if total_sample is not None else raw_sample
+        self_vectors, object_vectors = _touch_decompose_vectors_for_display(
+            base_sample,
+            self_sample,
+            object_sample,
+        )
         touch_state[name] = {
             "selftouch": self_vectors,
             "object": object_vectors,
