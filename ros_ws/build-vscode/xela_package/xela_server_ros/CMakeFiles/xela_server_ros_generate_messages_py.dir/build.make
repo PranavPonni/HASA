@@ -72,8 +72,8 @@ devel/lib/python3/dist-packages/xela_server_ros/msg/_SensorFull.py: /home/handli
 devel/lib/python3/dist-packages/xela_server_ros/msg/_SensStream.py: /opt/ros/noetic/lib/genpy/genmsg_py.py
 devel/lib/python3/dist-packages/xela_server_ros/msg/_SensStream.py: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensStream.msg
 devel/lib/python3/dist-packages/xela_server_ros/msg/_SensStream.py: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Forces.msg
-devel/lib/python3/dist-packages/xela_server_ros/msg/_SensStream.py: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Taxel.msg
 devel/lib/python3/dist-packages/xela_server_ros/msg/_SensStream.py: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensorFull.msg
+devel/lib/python3/dist-packages/xela_server_ros/msg/_SensStream.py: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Taxel.msg
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --blue --bold --progress-dir=/home/handlingteam2/HASA/ros_ws/build-vscode/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Generating Python from MSG xela_server_ros/SensStream"
 	cd /home/handlingteam2/HASA/ros_ws/build-vscode/xela_package/xela_server_ros && ../../catkin_generated/env_cached.sh /usr/bin/python3 /opt/ros/noetic/share/genpy/cmake/../../../lib/genpy/genmsg_py.py /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensStream.msg -Ixela_server_ros:/home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg -Istd_msgs:/opt/ros/noetic/share/std_msgs/cmake/../msg -Igeometry_msgs:/opt/ros/noetic/share/geometry_msgs/cmake/../msg -p xela_server_ros -o /home/handlingteam2/HASA/ros_ws/build-vscode/devel/lib/python3/dist-packages/xela_server_ros/msg
 
@@ -90,8 +90,8 @@ devel/lib/python3/dist-packages/xela_server_ros/msg/_Forces.py: /home/handlingte
 devel/lib/python3/dist-packages/xela_server_ros/srv/_XelaSensorStream.py: /opt/ros/noetic/lib/genpy/gensrv_py.py
 devel/lib/python3/dist-packages/xela_server_ros/srv/_XelaSensorStream.py: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/srv/XelaSensorStream.srv
 devel/lib/python3/dist-packages/xela_server_ros/srv/_XelaSensorStream.py: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Forces.msg
-devel/lib/python3/dist-packages/xela_server_ros/srv/_XelaSensorStream.py: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Taxel.msg
 devel/lib/python3/dist-packages/xela_server_ros/srv/_XelaSensorStream.py: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensorFull.msg
+devel/lib/python3/dist-packages/xela_server_ros/srv/_XelaSensorStream.py: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Taxel.msg
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --blue --bold --progress-dir=/home/handlingteam2/HASA/ros_ws/build-vscode/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Generating Python code from SRV xela_server_ros/XelaSensorStream"
 	cd /home/handlingteam2/HASA/ros_ws/build-vscode/xela_package/xela_server_ros && ../../catkin_generated/env_cached.sh /usr/bin/python3 /opt/ros/noetic/share/genpy/cmake/../../../lib/genpy/gensrv_py.py /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/srv/XelaSensorStream.srv -Ixela_server_ros:/home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg -Istd_msgs:/opt/ros/noetic/share/std_msgs/cmake/../msg -Igeometry_msgs:/opt/ros/noetic/share/geometry_msgs/cmake/../msg -p xela_server_ros -o /home/handlingteam2/HASA/ros_ws/build-vscode/devel/lib/python3/dist-packages/xela_server_ros/srv
 

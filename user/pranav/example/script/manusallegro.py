@@ -302,14 +302,24 @@ class ManusToAllegroPublisher(Node):
         for joint, target in spread_targets.items():
             mqd_20[joint] += amount * (target - mqd_20[joint])
 
-        # Align corresponding flex joints so adjacent fingertip pads arrive at
-        # approximately the same height.  Partial blending preserves individual
-        # glove control for in-hand manipulation.
+        # Use the middle finger as the self-touch anchor and bring only the
+        # outer fingers toward it.  Moving the middle target toward the
+        # three-finger average can reduce its position error as soon as the
+        # outer fingers make contact; with the Allegro PD controller that also
+        # reduces the middle fingertip's commanded torque.
         sync_amount = amount * SELF_TOUCH_SYNC_FLEX
-        for offsets in ((5, 9, 13), (6, 10, 14), (7, 11, 15)):
-            mean = sum(mqd_20[i] for i in offsets) / len(offsets)
-            for i in offsets:
-                mqd_20[i] += sync_amount * (mean - mqd_20[i])
+        for index_joint, middle_joint, ring_joint in (
+            (5, 9, 13),
+            (6, 10, 14),
+            (7, 11, 15),
+        ):
+            middle_target = mqd_20[middle_joint]
+            mqd_20[index_joint] += sync_amount * (
+                middle_target - mqd_20[index_joint]
+            )
+            mqd_20[ring_joint] += sync_amount * (
+                middle_target - mqd_20[ring_joint]
+            )
 
         return amount
 

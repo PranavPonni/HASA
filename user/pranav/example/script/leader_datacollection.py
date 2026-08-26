@@ -17,8 +17,8 @@ from allegro_package import AllegroHand
 from xela_py import TactileSubscriber
 from allegro_leader import AllegroPrecesionGrasp
 
-DATA_DIR = "/home/handlingteam2/HASA/user/pranav/example/data/new/bolts/M3.5boltclockwise"
-MAX_TIMESTEP = 800
+DATA_DIR = "/home/handlingteam2/HASA/user/pranav/example/data/tasks/kmwipe"
+MAX_TIMESTEP = 100
 CTRL_FREQ = 15.0
 HAND_TOPIC_PREFIX = "allegroHand_0"
 BACKGROUND_AUDIO_PATH = "/home/handlingteam2/HASA/user/pranav/example/script/util/beep.mp3"
@@ -229,7 +229,8 @@ class AudioPlayer:
 
 class KeyboardHandler:
     def __init__(self, controller: DataCollectorController, robot: XelAllegro,
-                 teleop: AllegroPrecesionGrasp, audio_player: AudioPlayer, video_recorder: VideoRecorder):
+                 teleop: AllegroPrecesionGrasp, audio_player: AudioPlayer,
+                 video_recorder: VideoRecorder):
         self._controller = controller
         self._robot = robot
         self._teleop = teleop
@@ -288,6 +289,16 @@ def flatten_dict(d, parent_key='', sep='_'):
     return items
 
 
+def subtract_tactile_offset(tactile, tactile_offset):
+    """Apply the resting baseline while preserving unavailable sensor data."""
+    return {
+        k: (tactile[k] - tactile_offset[k]
+            if tactile[k] is not None and tactile_offset.get(k) is not None
+            else tactile[k])
+        for k in tactile
+    }
+
+
 def parse_args(args=None):
     parser = argparse.ArgumentParser(
         description="Collect Allegro leader data using one thumb/finger pair."
@@ -330,7 +341,9 @@ def main(args=None):
     controller = DataCollectorController()
     audio_player = AudioPlayer(BACKGROUND_AUDIO_PATH)
     video_recorder = VideoRecorder(device_id=0)
-    keyboard_handler = KeyboardHandler(controller, robot, teleop, audio_player, video_recorder)
+    keyboard_handler = KeyboardHandler(
+        controller, robot, teleop, audio_player, video_recorder
+    )
 
     print(f"[Info] MAX_TIMESTEP = {MAX_TIMESTEP}")
     print(f"[Info] Finger mode = {parsed_args.fingers}")
@@ -418,12 +431,9 @@ def main(args=None):
                 obs = robot.set_joint_command(follower_cmd)
                 # Match manus_datacollection.py: subtract only when both the
                 # live reading and its resting baseline are valid.
-                obs["tactile"] = {
-                    k: (obs["tactile"][k] - tactile_offset[k]
-                        if obs["tactile"][k] is not None and tactile_offset.get(k) is not None
-                        else obs["tactile"][k])
-                    for k in obs["tactile"]
-                }
+                obs["tactile"] = subtract_tactile_offset(
+                    obs["tactile"], tactile_offset
+                )
 
                 file_path = os.path.join(episode_dir, f"timestep{ts}.pkl")
                 try:
