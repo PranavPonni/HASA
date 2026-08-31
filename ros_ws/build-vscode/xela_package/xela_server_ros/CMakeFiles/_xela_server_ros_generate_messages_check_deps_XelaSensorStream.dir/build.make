@@ -54,7 +54,7 @@ CMAKE_BINARY_DIR = /home/handlingteam2/HASA/ros_ws/build-vscode
 include xela_package/xela_server_ros/CMakeFiles/_xela_server_ros_generate_messages_check_deps_XelaSensorStream.dir/progress.make
 
 xela_package/xela_server_ros/CMakeFiles/_xela_server_ros_generate_messages_check_deps_XelaSensorStream:
-	cd /home/handlingteam2/HASA/ros_ws/build-vscode/xela_package/xela_server_ros && ../../catkin_generated/env_cached.sh /usr/bin/python3 /opt/ros/noetic/share/genmsg/cmake/../../../lib/genmsg/genmsg_check_deps.py xela_server_ros /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/srv/XelaSensorStream.srv xela_server_ros/Forces:xela_server_ros/SensorFull:xela_server_ros/Taxel
+	cd /home/handlingteam2/HASA/ros_ws/build-vscode/xela_package/xela_server_ros && ../../catkin_generated/env_cached.sh /usr/bin/python3 /opt/ros/noetic/share/genmsg/cmake/../../../lib/genmsg/genmsg_check_deps.py xela_server_ros /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/srv/XelaSensorStream.srv xela_server_ros/Taxel:xela_server_ros/SensorFull:xela_server_ros/Forces
 
 _xela_server_ros_generate_messages_check_deps_XelaSensorStream: xela_package/xela_server_ros/CMakeFiles/_xela_server_ros_generate_messages_check_deps_XelaSensorStream
 _xela_server_ros_generate_messages_check_deps_XelaSensorStream: xela_package/xela_server_ros/CMakeFiles/_xela_server_ros_generate_messages_check_deps_XelaSensorStream.dir/build.make

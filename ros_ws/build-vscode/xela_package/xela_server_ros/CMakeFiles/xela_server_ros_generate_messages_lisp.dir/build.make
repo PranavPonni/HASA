@@ -62,16 +62,16 @@ xela_package/xela_server_ros/CMakeFiles/xela_server_ros_generate_messages_lisp: 
 
 devel/share/common-lisp/ros/xela_server_ros/msg/SensorFull.lisp: /opt/ros/noetic/lib/genlisp/gen_lisp.py
 devel/share/common-lisp/ros/xela_server_ros/msg/SensorFull.lisp: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensorFull.msg
-devel/share/common-lisp/ros/xela_server_ros/msg/SensorFull.lisp: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Forces.msg
 devel/share/common-lisp/ros/xela_server_ros/msg/SensorFull.lisp: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Taxel.msg
+devel/share/common-lisp/ros/xela_server_ros/msg/SensorFull.lisp: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Forces.msg
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --blue --bold --progress-dir=/home/handlingteam2/HASA/ros_ws/build-vscode/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Generating Lisp code from xela_server_ros/SensorFull.msg"
 	cd /home/handlingteam2/HASA/ros_ws/build-vscode/xela_package/xela_server_ros && ../../catkin_generated/env_cached.sh /usr/bin/python3 /opt/ros/noetic/share/genlisp/cmake/../../../lib/genlisp/gen_lisp.py /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensorFull.msg -Ixela_server_ros:/home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg -Istd_msgs:/opt/ros/noetic/share/std_msgs/cmake/../msg -Igeometry_msgs:/opt/ros/noetic/share/geometry_msgs/cmake/../msg -p xela_server_ros -o /home/handlingteam2/HASA/ros_ws/build-vscode/devel/share/common-lisp/ros/xela_server_ros/msg
 
 devel/share/common-lisp/ros/xela_server_ros/msg/SensStream.lisp: /opt/ros/noetic/lib/genlisp/gen_lisp.py
 devel/share/common-lisp/ros/xela_server_ros/msg/SensStream.lisp: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensStream.msg
-devel/share/common-lisp/ros/xela_server_ros/msg/SensStream.lisp: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Forces.msg
-devel/share/common-lisp/ros/xela_server_ros/msg/SensStream.lisp: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensorFull.msg
 devel/share/common-lisp/ros/xela_server_ros/msg/SensStream.lisp: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Taxel.msg
+devel/share/common-lisp/ros/xela_server_ros/msg/SensStream.lisp: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensorFull.msg
+devel/share/common-lisp/ros/xela_server_ros/msg/SensStream.lisp: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Forces.msg
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --blue --bold --progress-dir=/home/handlingteam2/HASA/ros_ws/build-vscode/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Generating Lisp code from xela_server_ros/SensStream.msg"
 	cd /home/handlingteam2/HASA/ros_ws/build-vscode/xela_package/xela_server_ros && ../../catkin_generated/env_cached.sh /usr/bin/python3 /opt/ros/noetic/share/genlisp/cmake/../../../lib/genlisp/gen_lisp.py /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensStream.msg -Ixela_server_ros:/home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg -Istd_msgs:/opt/ros/noetic/share/std_msgs/cmake/../msg -Igeometry_msgs:/opt/ros/noetic/share/geometry_msgs/cmake/../msg -p xela_server_ros -o /home/handlingteam2/HASA/ros_ws/build-vscode/devel/share/common-lisp/ros/xela_server_ros/msg
 
@@ -87,9 +87,9 @@ devel/share/common-lisp/ros/xela_server_ros/msg/Forces.lisp: /home/handlingteam2
 
 devel/share/common-lisp/ros/xela_server_ros/srv/XelaSensorStream.lisp: /opt/ros/noetic/lib/genlisp/gen_lisp.py
 devel/share/common-lisp/ros/xela_server_ros/srv/XelaSensorStream.lisp: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/srv/XelaSensorStream.srv
-devel/share/common-lisp/ros/xela_server_ros/srv/XelaSensorStream.lisp: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Forces.msg
-devel/share/common-lisp/ros/xela_server_ros/srv/XelaSensorStream.lisp: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensorFull.msg
 devel/share/common-lisp/ros/xela_server_ros/srv/XelaSensorStream.lisp: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Taxel.msg
+devel/share/common-lisp/ros/xela_server_ros/srv/XelaSensorStream.lisp: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensorFull.msg
+devel/share/common-lisp/ros/xela_server_ros/srv/XelaSensorStream.lisp: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Forces.msg
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --blue --bold --progress-dir=/home/handlingteam2/HASA/ros_ws/build-vscode/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Generating Lisp code from xela_server_ros/XelaSensorStream.srv"
 	cd /home/handlingteam2/HASA/ros_ws/build-vscode/xela_package/xela_server_ros && ../../catkin_generated/env_cached.sh /usr/bin/python3 /opt/ros/noetic/share/genlisp/cmake/../../../lib/genlisp/gen_lisp.py /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/srv/XelaSensorStream.srv -Ixela_server_ros:/home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg -Istd_msgs:/opt/ros/noetic/share/std_msgs/cmake/../msg -Igeometry_msgs:/opt/ros/noetic/share/geometry_msgs/cmake/../msg -p xela_server_ros -o /home/handlingteam2/HASA/ros_ws/build-vscode/devel/share/common-lisp/ros/xela_server_ros/srv
 
