@@ -25,6 +25,14 @@ def _add_noise(x, std):
     return x + torch.randn_like(x) * std
 
 
+def _positive_int(value, default=1):
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        value = int(default)
+    return max(1, value)
+
+
 def _masked_mse(pred, target, mask):
     loss = F.mse_loss(pred, target, reduction="none")
     while mask.dim() < loss.dim():
@@ -297,6 +305,18 @@ class DexWildMotionModel(nn.Module):
             for key in param.get("temporal_delta_keys", [])
             if key in self.output_keys
         )
+        self.action_chunk_size = max(
+            0,
+            int(param.get("action_chunk_size", param.get("chunk_size", 0)) or 0),
+        )
+        self.action_chunk_stride = _positive_int(
+            param.get("action_chunk_stride", param.get("chunk_stride", 1)),
+            default=1,
+        )
+        self.act_obs_steps = _positive_int(
+            param.get("act_obs_steps", param.get("trajectory_condition_steps", 1)),
+            default=1,
+        )
         loss_names = (
             ("total_loss",)
             + self.output_keys
@@ -334,6 +354,9 @@ class DexWildMotionModel(nn.Module):
         if self.selftouch is not None:
             self.selftouch.eval()
         return self
+
+    def uses_action_chunks(self):
+        return self.arch == "act" and self.action_chunk_size > 0
 
     def _expand_selftouch_joint(self, x):
         if x.shape[-1] == self.selftouch_input_dim:
@@ -517,13 +540,54 @@ class DexWildMotionModel(nn.Module):
         }
         return self._selftouch_features(raw_streams, **selftouch_kwargs)
 
-    def _slice_time(self, value, end):
-        if torch.is_tensor(value) and value.dim() >= 3:
+    def _is_temporal_tensor(self, value, reference_steps=None):
+        if not torch.is_tensor(value):
+            return False
+        if value.dim() >= 3:
+            return True
+        return (
+            value.dim() == 2
+            and reference_steps is not None
+            and int(value.shape[1]) == int(reference_steps)
+        )
+
+    def _slice_time(self, value, end, reference_steps=None):
+        if self._is_temporal_tensor(value, reference_steps=reference_steps):
             return value[:, :end]
         return value
 
-    def _slice_temporal_mapping(self, mapping, end):
-        return {key: self._slice_time(value, end) for key, value in mapping.items()}
+    def _slice_temporal_mapping(self, mapping, end, reference_steps=None):
+        return {
+            key: self._slice_time(value, end, reference_steps=reference_steps)
+            for key, value in mapping.items()
+        }
+
+    def _slice_time_range(self, value, start, end, reference_steps=None):
+        if self._is_temporal_tensor(value, reference_steps=reference_steps):
+            return value[:, start:end]
+        return value
+
+    def _slice_temporal_range_mapping(self, mapping, start, end, reference_steps=None):
+        return {
+            key: self._slice_time_range(
+                value,
+                start,
+                end,
+                reference_steps=reference_steps,
+            )
+            for key, value in mapping.items()
+        }
+
+    def _tail_time(self, value, steps, reference_steps=None):
+        if self._is_temporal_tensor(value, reference_steps=reference_steps):
+            return value[:, -steps:]
+        return value
+
+    def _tail_temporal_mapping(self, mapping, steps, reference_steps=None):
+        return {
+            key: self._tail_time(value, steps, reference_steps=reference_steps)
+            for key, value in mapping.items()
+        }
 
     def _trajectory_condition_steps(self, streams):
         steps = int(self.param.get("trajectory_condition_steps", 0) or 0)
@@ -531,6 +595,10 @@ class DexWildMotionModel(nn.Module):
             return 0
         reference = self._stream_sequence(streams, self.output_keys[0])
         return max(1, min(steps, int(reference.shape[1])))
+
+    def _chunk_obs_steps(self, streams):
+        reference = self._stream_sequence(streams, self.output_keys[0])
+        return max(1, min(self.act_obs_steps, int(reference.shape[1])))
 
     def _build_obs(self, streams, noise=None, drop_last=True, **selftouch_kwargs):
         tactile_std = _noise_value(noise, "tactile_noise", 0.0)
@@ -564,12 +632,126 @@ class DexWildMotionModel(nn.Module):
             dim=-1,
         )
 
+    def _target_actions_from_range(self, streams, start, end):
+        return torch.cat(
+            [
+                self._stream_sequence(streams, key)[:, start:end]
+                for key in self.output_keys
+            ],
+            dim=-1,
+        )
+
     def _split(self, actions):
         widths = [
             self.tactile_dim if key in self.tactile_keys else self.hand_dim
             for key in self.output_keys
         ]
         return dict(zip(self.output_keys, torch.split(actions, widths, dim=-1)))
+
+    def _forward_chunk_loss(
+        self,
+        streams,
+        data_found,
+        loss_coef=None,
+        compute_selftouch_teacher_loss=None,
+        noise=None,
+        **selftouch_kwargs,
+    ):
+        obs_steps = self._chunk_obs_steps(streams)
+        reference = self._stream_sequence(streams, self.output_keys[0])
+        total_steps = int(reference.shape[1])
+        target_start = obs_steps
+        target_end = min(total_steps, target_start + self.action_chunk_size)
+        if target_end <= target_start:
+            raise ValueError(
+                "Chunked ACT needs at least one target timestep after "
+                f"act_obs_steps={obs_steps}; got sequence length {total_steps}."
+            )
+
+        obs_streams = self._slice_temporal_mapping(
+            streams,
+            obs_steps,
+            reference_steps=total_steps,
+        )
+        obs_selftouch_kwargs = self._slice_temporal_mapping(
+            selftouch_kwargs,
+            obs_steps,
+            reference_steps=total_steps,
+        )
+        obs = self._build_obs(
+            obs_streams,
+            noise=noise,
+            drop_last=False,
+            **obs_selftouch_kwargs,
+        )
+        target_actions = self._target_actions_from_range(
+            streams,
+            target_start,
+            target_end,
+        )
+        pred_actions, aux = self.policy(obs, target_actions)
+        preds = self._split(pred_actions)
+
+        mask = data_found[:, target_start:target_end]
+        loss_coef = loss_coef or {}
+        selftouch_teacher_coef = float(
+            loss_coef.get(
+                "selftouch_teacher",
+                self.param.get("selftouch_teacher_loss_coef", 0.0),
+            )
+            or 0.0
+        )
+        component_losses = []
+        total_loss = pred_actions.new_tensor(0.0)
+        for key in self.output_keys:
+            target = self._stream_sequence(streams, key)[:, target_start:target_end]
+            loss = _masked_mse(preds[key], target, mask)
+            component_losses.append(loss)
+            total_loss = total_loss + loss * float(loss_coef.get(key, 1.0))
+        for key in self.temporal_delta_keys:
+            target = self._stream_sequence(streams, key)[:, target_start:target_end]
+            anchor = self._stream_sequence(streams, key)[:, target_start - 1 : target_start]
+            anchored_pred = torch.cat([anchor, preds[key]], dim=1)
+            target_full = torch.cat([anchor, target], dim=1)
+            pred_delta = anchored_pred[:, 1:] - anchored_pred[:, :-1]
+            target_delta = target_full[:, 1:] - target_full[:, :-1]
+            loss = _masked_mse(pred_delta, target_delta, mask)
+            component_losses.append(loss)
+            total_loss = total_loss + loss * float(
+                loss_coef.get(f"{key}_delta", 1.0)
+            )
+        if self.use_selftouch and self.selftouch_teacher_loss_keys:
+            if compute_selftouch_teacher_loss is None:
+                compute_selftouch_teacher_loss = selftouch_teacher_coef != 0.0
+            if compute_selftouch_teacher_loss:
+                teacher_features = self._selftouch_teacher_features(
+                    streams,
+                    **selftouch_kwargs,
+                )
+                teacher_losses = []
+                for key in self.selftouch_teacher_loss_keys:
+                    if key not in preds or key not in teacher_features:
+                        continue
+                    teacher_seq = teacher_features[key].detach()
+                    if teacher_seq.shape[1] < target_end:
+                        teacher_seq = _fit_timesteps(teacher_seq, target_end)
+                    teacher_target = teacher_seq[:, target_start:target_end]
+                    teacher_losses.append(_masked_mse(preds[key], teacher_target, mask))
+                if teacher_losses:
+                    teacher_loss = torch.stack(teacher_losses).mean()
+                else:
+                    teacher_loss = total_loss * 0.0
+            else:
+                teacher_loss = total_loss * 0.0
+            component_losses.append(teacher_loss)
+            total_loss = total_loss + teacher_loss * selftouch_teacher_coef
+        if "noise_pred" in aux:
+            diffusion_loss = _masked_mse(aux["noise_pred"], aux["noise"], mask)
+            total_loss = total_loss + diffusion_loss * float(
+                self.param.get("diffusion_loss_coef", 0.1)
+            )
+
+        return (total_loss, *component_losses), preds
 
     def forward_loss(
         self,
@@ -614,14 +796,31 @@ class DexWildMotionModel(nn.Module):
             "selftouch_combo": selftouch_combo,
             "selftouch_phase": selftouch_phase,
         }
+        if self.uses_action_chunks():
+            return self._forward_chunk_loss(
+                streams,
+                data_found,
+                loss_coef=loss_coef,
+                compute_selftouch_teacher_loss=compute_selftouch_teacher_loss,
+                noise=noise,
+                **selftouch_kwargs,
+            )
         condition_steps = self._trajectory_condition_steps(streams)
         if condition_steps > 0:
             if self.arch != "act":
                 raise ValueError("trajectory_condition_steps currently requires dexwild_arch: act")
-            obs_streams = self._slice_temporal_mapping(streams, condition_steps)
+            reference_steps = int(
+                self._stream_sequence(streams, self.output_keys[0]).shape[1]
+            )
+            obs_streams = self._slice_temporal_mapping(
+                streams,
+                condition_steps,
+                reference_steps=reference_steps,
+            )
             obs_selftouch_kwargs = self._slice_temporal_mapping(
                 selftouch_kwargs,
                 condition_steps,
+                reference_steps=reference_steps,
             )
             obs = self._build_obs(
                 obs_streams,
@@ -699,6 +898,30 @@ class DexWildMotionModel(nn.Module):
 
         return (total_loss, *component_losses), preds
 
+    def forward_action_chunk(self, output_steps=None, **kwargs):
+        selftouch_kwargs = {
+            key: kwargs.pop(key)
+            for key in list(kwargs.keys())
+            if key.startswith("selftouch_")
+        }
+        streams = self._motion_streams_from_args(**kwargs)
+        obs_steps = self._chunk_obs_steps(streams)
+        reference_steps = int(self._stream_sequence(streams, self.output_keys[0]).shape[1])
+        streams = self._tail_temporal_mapping(
+            streams,
+            obs_steps,
+            reference_steps=reference_steps,
+        )
+        selftouch_kwargs = self._tail_temporal_mapping(
+            selftouch_kwargs,
+            obs_steps,
+            reference_steps=reference_steps,
+        )
+        obs = self._build_obs(streams, drop_last=False, **selftouch_kwargs)
+        output_steps = int(output_steps or self.action_chunk_size or obs.shape[1])
+        pred_actions, _ = self.policy(obs, None, output_steps=output_steps)
+        return self._split(pred_actions)
+
     def forward_sequence(self, output_steps=None, **kwargs):
         selftouch_kwargs = {
             key: kwargs.pop(key)
@@ -710,10 +933,18 @@ class DexWildMotionModel(nn.Module):
         if condition_steps > 0:
             if self.arch != "act":
                 raise ValueError("trajectory_condition_steps currently requires dexwild_arch: act")
-            streams = self._slice_temporal_mapping(streams, condition_steps)
+            reference_steps = int(
+                self._stream_sequence(streams, self.output_keys[0]).shape[1]
+            )
+            streams = self._slice_temporal_mapping(
+                streams,
+                condition_steps,
+                reference_steps=reference_steps,
+            )
             selftouch_kwargs = self._slice_temporal_mapping(
                 selftouch_kwargs,
                 condition_steps,
+                reference_steps=reference_steps,
             )
             obs = self._build_obs(streams, drop_last=False, **selftouch_kwargs)
             if output_steps is None:
@@ -749,6 +980,13 @@ class DexWildMotionModel(nn.Module):
                 kwargs[key] = value
 
         streams = self._motion_streams_from_args(**kwargs)
+        if self.uses_action_chunks():
+            chunk_preds = self.forward_action_chunk(
+                output_steps=1,
+                **streams,
+                **selftouch_kwargs,
+            )
+            return {key: value[:, 0] for key, value in chunk_preds.items()}
         parts = []
         for key in self.tactile_keys:
             parts.append(self._stream_sequence(streams, key))

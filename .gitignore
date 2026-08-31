@@ -21,6 +21,12 @@ data_server/
 *.tif
 *.tiff
 *.svg
+*.csv
+*.xls
+*.xlsx
+*.xlsm
+*.xlsb
+~$*.xls*
 model_weight/
 analysis/
 

@@ -351,9 +351,19 @@ class MainExectutor:
         model_root = os.path.dirname(self.model_param["model_save_path"])
         param_root = os.path.dirname(os.path.dirname(self.param_file))
         model_name = str(self.model_param.get("model_name") or os.path.basename(model_root))
+        run_prefix = str(
+            sweep_params.get("run_name")
+            or self.params.get("Train", {}).get("run_name")
+            or model_name
+        )
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", run_prefix):
+            raise ValueError(
+                "Sweep.run_name may contain only letters, digits, dot, "
+                "underscore, and hyphen"
+            )
 
         if numbered:
-            pattern = re.compile(rf"^{re.escape(model_name)}_(\d+)$")
+            pattern = re.compile(rf"^{re.escape(run_prefix)}_(\d+)$")
             indices = []
             for root in (model_root, param_root):
                 if not os.path.isdir(root):
@@ -365,7 +375,7 @@ class MainExectutor:
 
             index = max(indices, default=0) + 1
             while True:
-                run_name = f"{model_name}_{index:03d}"
+                run_name = f"{run_prefix}_{index:03d}"
                 model_save_path = os.path.join(model_root, run_name)
                 param_file_dir = os.path.join(param_root, run_name)
                 if not os.path.exists(model_save_path) and not os.path.exists(param_file_dir):
@@ -374,7 +384,7 @@ class MainExectutor:
                     return run_name, model_save_path, param_file_dir
                 index += 1
 
-        run_name = str(sweep_params.get("run_name") or self.params.get("Train", {}).get("run_name") or model_name)
+        run_name = run_prefix
         model_save_path = os.path.join(model_root, run_name)
         param_file_dir = os.path.join(param_root, run_name)
         os.makedirs(model_save_path, exist_ok=True)

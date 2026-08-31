@@ -11,7 +11,7 @@ from data_preproc import unscale_data
 os.environ.setdefault("MPLCONFIGDIR", f"/tmp/hasa-matplotlib-{os.getuid()}")
 
 
-FINGER_ORDER = ("index", "thumb", "middle", "ring")
+FINGER_ORDER = ("thumb", "index", "middle", "ring")
 TACTILE_PROFILE_ORDER = ("index", "thumb", "middle", "ring")
 COMBO_FINGER_ORDER = (
     ("thumb", "index"),
@@ -46,6 +46,16 @@ PROFILE_ACCURACY_SCALE = TACTILE_YMAX - TACTILE_YMIN
 DEFAULT_RAW_ACCURACY_TOLERANCE = 200.0
 DEFAULT_ACTIVE_TAXEL_THRESHOLD = 200.0
 DEFAULT_PEAK_TAXEL_RATIO = 0.05
+DEFAULT_OBJECT_FRONT_ROWS = 1.0
+DEFAULT_FRONT_SELFTOUCH_RATIO = 0.04
+DEFAULT_OBJECT_FRONT_CENTER_STRENGTH = 0.90
+DEFAULT_SELFTOUCH_WEAK_RATIO = 0.24
+DEFAULT_SELFTOUCH_FLOOR_PERCENTILE = 25.0
+DEFAULT_COOCCURRENT_SELFTOUCH_FINGERS = ("index", "middle")
+DEFAULT_COOCCURRENT_SELFTOUCH_TARGET_RATIO = 0.30
+DEFAULT_COOCCURRENT_SELFTOUCH_OBJECT_RATIO = 0.45
+DEFAULT_COOCCURRENT_SELFTOUCH_TOTAL_PERCENTILE = 55.0
+DEFAULT_COOCCURRENT_SELFTOUCH_STRENGTH = 0.70
 
 
 def included_fingers_from_combinations(combinations: Optional[Sequence[str]]) -> set:
@@ -129,15 +139,57 @@ def _as_bool(value, default=False) -> bool:
     return bool(value)
 
 
+def _normalise_finger_name(value) -> str:
+    text = str(value).strip().lower()
+    return text.replace("tactile_", "").replace("_tip", "")
+
+
 def _finger_set(value, fallback: Sequence[str]) -> set:
     if value is None:
-        return set(fallback)
+        return {_normalise_finger_name(name) for name in fallback}
     if isinstance(value, str):
         items = [part.strip().lower() for part in value.replace(";", ",").split(",")]
     else:
         items = [str(part).strip().lower() for part in value]
-    selected = {item for item in items if item}
-    return selected or set(fallback)
+    selected = {_normalise_finger_name(item) for item in items if item}
+    if selected.intersection({"all", "*"}):
+        return {_normalise_finger_name(name) for name in fallback}
+    valid = {_normalise_finger_name(name) for name in fallback}
+    selected = {item for item in selected if item in valid}
+    return selected or valid
+
+
+def _normalised_name_set(value) -> set:
+    if value is None:
+        return set()
+    if isinstance(value, str):
+        items = [part.strip().lower() for part in value.replace(";", ",").split(",")]
+    else:
+        items = [str(part).strip().lower() for part in value]
+    return {_normalise_finger_name(item) for item in items if item}
+
+
+def _finger_ratio_value(value, finger_name: Optional[str], default: float) -> float:
+    if isinstance(value, Mapping):
+        name = _normalise_finger_name(finger_name)
+        candidates = (
+            name,
+            FINGER_TO_KEY.get(name, ""),
+            f"tactile_{name}_tip",
+        )
+        for candidate in candidates:
+            if candidate in value:
+                try:
+                    return float(value[candidate])
+                except (TypeError, ValueError):
+                    return float(default)
+        return float(default)
+    if value is None:
+        return float(default)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
 
 
 def rmse(raw: np.ndarray, pred: np.ndarray) -> float:
@@ -1521,17 +1573,376 @@ def _touch_scale_vectors_to_magnitude(vectors: np.ndarray, target_magnitude: np.
     return vectors * scale[..., None]
 
 
+def _touch_localize_self_vectors(
+    vectors: np.ndarray,
+    *,
+    finger_name: Optional[str] = None,
+    keep_fraction: float = 0.18,
+    min_peak_fraction: float = 0.25,
+) -> np.ndarray:
+    """Keep only the strongest self-touch taxels for display decomposition."""
+    vectors = np.asarray(vectors, dtype=np.float32)
+    if vectors.ndim != 3 or vectors.shape[0] <= 0 or vectors.shape[1] <= 0:
+        return vectors
+
+    if str(finger_name or "").lower() == "middle":
+        keep_fraction = max(float(keep_fraction), 0.28)
+        min_peak_fraction = min(float(min_peak_fraction), 0.18)
+
+    magnitudes = np.linalg.norm(vectors, axis=-1)
+    steps, taxels = magnitudes.shape
+    keep_count = int(np.ceil(float(taxels) * float(keep_fraction)))
+    keep_count = min(max(keep_count, 1), taxels)
+    top_idx = np.argpartition(magnitudes, taxels - keep_count, axis=1)[:, -keep_count:]
+    peak = np.max(magnitudes, axis=1)
+    top_mag = np.take_along_axis(magnitudes, top_idx, axis=1)
+    active = (top_mag >= peak[:, None] * float(min_peak_fraction)) & (peak[:, None] > 1e-6)
+
+    mask = np.zeros((steps, taxels), dtype=bool)
+    row_idx = np.arange(steps)[:, None]
+    mask[row_idx, top_idx] = active
+    mask = _touch_add_side_selftouch_taxels(mask, magnitudes, finger_name)
+    return vectors * mask[..., None]
+
+
+def _touch_add_side_selftouch_taxels(
+    mask: np.ndarray,
+    magnitudes: np.ndarray,
+    finger_name: Optional[str],
+    *,
+    side_keep_count: int = 4,
+    side_min_peak_fraction: float = 0.06,
+) -> np.ndarray:
+    if str(finger_name or "").lower() != "middle":
+        return mask
+    side_indices = _touch_lateral_side_indices(finger_name, magnitudes.shape[1])
+    if not side_indices:
+        return mask
+
+    out = np.array(mask, copy=True)
+    row_idx = np.arange(magnitudes.shape[0])[:, None]
+    global_peak = np.max(magnitudes, axis=1)
+    for indices in side_indices:
+        if indices.size <= 0:
+            continue
+        keep_count = min(max(int(side_keep_count), 1), int(indices.size))
+        side_mag = magnitudes[:, indices]
+        top_local = np.argpartition(side_mag, side_mag.shape[1] - keep_count, axis=1)[:, -keep_count:]
+        top_taxel = indices[top_local]
+        top_mag = np.take_along_axis(side_mag, top_local, axis=1)
+        active = (top_mag >= global_peak[:, None] * float(side_min_peak_fraction)) & (
+            global_peak[:, None] > 1e-6
+        )
+        out[row_idx, top_taxel] |= active
+    return out
+
+
+def _touch_lateral_side_indices(finger_name: Optional[str], taxels: int) -> Sequence[np.ndarray]:
+    try:
+        from vis_tac import FINGER_COORDS
+    except Exception:
+        return ()
+    coords = FINGER_COORDS.get(str(finger_name or "").lower())
+    if coords is None:
+        return ()
+    coords = np.asarray(coords[:taxels], dtype=np.float32)
+    if coords.ndim != 2 or coords.shape[0] <= 0 or coords.shape[1] < 2:
+        return ()
+    x_coords = coords[:, 0]
+    min_x = float(np.min(x_coords))
+    max_x = float(np.max(x_coords))
+    if max_x <= min_x:
+        return ()
+    return (
+        np.flatnonzero(x_coords <= min_x + 1.0),
+        np.flatnonzero(x_coords >= max_x - 1.0),
+    )
+
+
+def _touch_front_taxel_mask(
+    finger_name: Optional[str],
+    taxels: int,
+    *,
+    front_rows: float = DEFAULT_OBJECT_FRONT_ROWS,
+) -> np.ndarray:
+    mask = np.zeros((max(int(taxels), 0),), dtype=bool)
+    if taxels <= 0:
+        return mask
+    try:
+        from vis_tac import FINGER_COORDS
+    except Exception:
+        return mask
+    coords = FINGER_COORDS.get(str(finger_name or "").lower())
+    if coords is None:
+        return mask
+    coords = np.asarray(coords[:taxels], dtype=np.float32)
+    if coords.ndim != 2 or coords.shape[0] <= 0 or coords.shape[1] < 2:
+        return mask
+    y_coords = coords[:, 1]
+    front_min = float(np.max(y_coords)) - float(front_rows)
+    mask[: coords.shape[0]] = y_coords >= front_min
+    return mask
+
+
+def _touch_object_priority_front_vectors(
+    vectors: np.ndarray,
+    base_magnitude: np.ndarray,
+    *,
+    finger_name: Optional[str] = None,
+    selftouch_ratio: float = DEFAULT_FRONT_SELFTOUCH_RATIO,
+) -> np.ndarray:
+    front_mask = _touch_front_taxel_mask(finger_name, vectors.shape[1])
+    if not np.any(front_mask):
+        return vectors
+    magnitudes = np.linalg.norm(vectors, axis=-1)
+    target = np.array(magnitudes, copy=True)
+    cap = np.maximum(np.asarray(base_magnitude, dtype=np.float32), 0.0) * float(selftouch_ratio)
+    target[:, front_mask] = np.minimum(target[:, front_mask], cap[:, front_mask])
+    return _touch_scale_vectors_to_magnitude(vectors, target)
+
+
+def _touch_direction_with_z_fallback(vectors: np.ndarray, magnitude: np.ndarray) -> np.ndarray:
+    vectors = np.asarray(vectors, dtype=np.float32)
+    magnitude = np.asarray(magnitude, dtype=np.float32)
+    norm = np.linalg.norm(vectors, axis=-1)
+    direction = np.zeros_like(vectors, dtype=np.float32)
+    np.divide(
+        vectors,
+        norm[..., None],
+        out=direction,
+        where=norm[..., None] > 1e-6,
+    )
+    if direction.shape[-1] >= 3:
+        direction[..., 2] = np.where(norm > 1e-6, direction[..., 2], 1.0)
+    return direction * magnitude[..., None]
+
+
+def _touch_front_center_weights(finger_name: Optional[str], taxels: int) -> np.ndarray:
+    return _touch_region_weights(finger_name, taxels, "tip")
+
+
+def _touch_region_weights(
+    finger_name: Optional[str],
+    taxels: int,
+    region: Optional[str],
+) -> np.ndarray:
+    weights = np.ones((max(int(taxels), 0),), dtype=np.float32)
+    if taxels <= 0:
+        return weights
+    region = str(region or "tip").strip().lower().replace("_", "-")
+    try:
+        from vis_tac import FINGER_COORDS
+    except Exception:
+        return weights / max(float(np.sum(weights)), 1.0)
+    coords = FINGER_COORDS.get(str(finger_name or "").lower())
+    if coords is None:
+        return weights / max(float(np.sum(weights)), 1.0)
+    coords = np.asarray(coords[:taxels], dtype=np.float32)
+    if coords.ndim != 2 or coords.shape[0] <= 0 or coords.shape[1] < 2:
+        return weights / max(float(np.sum(weights)), 1.0)
+
+    x_coords = coords[:, 0]
+    y_coords = coords[:, 1]
+    x_center = 0.5 * (float(np.min(x_coords)) + float(np.max(x_coords)))
+    x_span = max(float(np.max(x_coords) - np.min(x_coords)), 1.0)
+    y_min = float(np.min(y_coords))
+    y_span = max(float(np.max(y_coords) - y_min), 1.0)
+    x_norm = np.clip((x_coords - float(np.min(x_coords))) / x_span, 0.0, 1.0)
+    y_norm = np.clip((y_coords - y_min) / y_span, 0.0, 1.0)
+    front = y_norm ** 3.0
+    center = np.exp(-0.5 * np.square((x_coords - x_center) / (0.22 * x_span + 1e-6)))
+    left = (1.0 - x_norm) ** 3.0
+    right = x_norm ** 3.0
+
+    if region in {"left", "left-side", "side-left"}:
+        prior = 0.04 + left
+    elif region in {"right", "right-side", "side-right"}:
+        prior = 0.04 + right
+    elif region in {"tip-left", "front-left", "left-tip"}:
+        prior = (0.04 + front) * (0.08 + left)
+    elif region in {"tip-right", "front-right", "right-tip"}:
+        prior = (0.04 + front) * (0.08 + right)
+    elif region in {"center", "middle", "centre"}:
+        prior = 0.04 + center
+    else:
+        prior = (0.04 + front) * (0.12 + center)
+    weights[: coords.shape[0]] = prior
+    total = float(np.sum(weights))
+    if total <= 1e-8:
+        return np.full_like(weights, 1.0 / max(weights.size, 1))
+    return weights / total
+
+
+def _touch_project_vectors_to_region(
+    vectors: np.ndarray,
+    *,
+    finger_name: Optional[str] = None,
+    region: Optional[str] = None,
+    strength: float = 0.90,
+) -> np.ndarray:
+    vectors = np.asarray(vectors, dtype=np.float32)
+    if vectors.ndim != 3 or vectors.shape[0] <= 0 or vectors.shape[1] <= 0:
+        return vectors
+    magnitudes = np.linalg.norm(vectors, axis=-1)
+    step_sum = np.sum(magnitudes, axis=1)
+    if not np.any(step_sum > 1e-6):
+        return vectors
+    weights = _touch_region_weights(finger_name, vectors.shape[1], region)
+    projected = step_sum[:, None] * weights[None, :]
+    strength = float(np.clip(strength, 0.0, 1.0))
+    target = (1.0 - strength) * magnitudes + strength * projected
+    target_sum = np.sum(target, axis=1)
+    target = np.divide(
+        target * step_sum[:, None],
+        target_sum[:, None],
+        out=np.zeros_like(target, dtype=np.float32),
+        where=target_sum[:, None] > 1e-6,
+    )
+    return _touch_direction_with_z_fallback(vectors, target)
+
+
+def _touch_project_object_to_front_center(
+    vectors: np.ndarray,
+    *,
+    finger_name: Optional[str] = None,
+    strength: float = DEFAULT_OBJECT_FRONT_CENTER_STRENGTH,
+) -> np.ndarray:
+    return _touch_project_vectors_to_region(
+        vectors,
+        finger_name=finger_name,
+        region="tip",
+        strength=strength,
+    )
+
+
+def _touch_reduce_weak_self_background(
+    vectors: np.ndarray,
+    base_magnitude: np.ndarray,
+    *,
+    ratio_threshold: float = DEFAULT_SELFTOUCH_WEAK_RATIO,
+    floor_percentile: float = DEFAULT_SELFTOUCH_FLOOR_PERCENTILE,
+) -> np.ndarray:
+    vectors = np.asarray(vectors, dtype=np.float32)
+    if vectors.ndim != 3 or vectors.shape[0] < 8 or vectors.shape[1] <= 0:
+        return vectors
+    magnitudes = np.linalg.norm(vectors, axis=-1)
+    base_magnitude = np.asarray(base_magnitude, dtype=np.float32)
+    steps = min(magnitudes.shape[0], base_magnitude.shape[0])
+    taxels = min(magnitudes.shape[1], base_magnitude.shape[1])
+    if steps <= 0 or taxels <= 0:
+        return vectors
+    magnitudes = magnitudes[:steps, :taxels]
+    base_magnitude = base_magnitude[:steps, :taxels]
+    self_mean = np.mean(magnitudes, axis=1)
+    base_mean = np.mean(base_magnitude, axis=1)
+    ratio = np.divide(
+        self_mean,
+        np.maximum(base_mean, 1e-6),
+        out=np.zeros_like(self_mean, dtype=np.float32),
+        where=base_mean > 1e-6,
+    )
+    weak = np.clip((float(ratio_threshold) - ratio) / max(float(ratio_threshold), 1e-6), 0.0, 1.0)
+    floor = np.percentile(magnitudes, float(np.clip(floor_percentile, 0.0, 80.0)), axis=0)
+    target = np.maximum(magnitudes - weak[:, None] * floor[None, :], 0.0)
+    out = np.array(vectors, copy=True)
+    out[:steps, :taxels] = _touch_direction_with_z_fallback(vectors[:steps, :taxels], target)
+    return out
+
+
+def _touch_boost_coactive_selftouch(
+    vectors: np.ndarray,
+    base_magnitude: np.ndarray,
+    *,
+    finger_name: Optional[str] = None,
+    enabled_fingers: Optional[Sequence[str]] = None,
+    target_ratio=DEFAULT_COOCCURRENT_SELFTOUCH_TARGET_RATIO,
+    object_ratio: float = DEFAULT_COOCCURRENT_SELFTOUCH_OBJECT_RATIO,
+    total_percentile: float = DEFAULT_COOCCURRENT_SELFTOUCH_TOTAL_PERCENTILE,
+    strength: float = DEFAULT_COOCCURRENT_SELFTOUCH_STRENGTH,
+    region: Optional[str] = None,
+) -> np.ndarray:
+    finger = _normalise_finger_name(finger_name)
+    enabled = _normalised_name_set(enabled_fingers)
+    if finger not in enabled:
+        return vectors
+
+    vectors = np.asarray(vectors, dtype=np.float32)
+    base_magnitude = np.asarray(base_magnitude, dtype=np.float32)
+    if vectors.ndim != 3 or vectors.shape[0] < 2 or vectors.shape[1] <= 0:
+        return vectors
+
+    steps = min(vectors.shape[0], base_magnitude.shape[0])
+    taxels = min(vectors.shape[1], base_magnitude.shape[1])
+    if steps <= 0 or taxels <= 0:
+        return vectors
+
+    part = vectors[:steps, :taxels]
+    base = np.maximum(base_magnitude[:steps, :taxels], 0.0)
+    magnitudes = np.linalg.norm(part, axis=-1)
+    base_mean = np.mean(base, axis=1)
+    self_mean = np.mean(magnitudes, axis=1)
+    object_mean = np.mean(np.maximum(base - magnitudes, 0.0), axis=1)
+    active_base = base_mean[base_mean > 1e-6]
+    if active_base.size <= 0:
+        return vectors
+
+    threshold = float(
+        np.percentile(active_base, float(np.clip(total_percentile, 0.0, 100.0)))
+    )
+    high = np.maximum(np.percentile(active_base, 95.0) - threshold, 1e-6)
+    total_gate = np.clip((base_mean - threshold) / high, 0.0, 1.0)
+    object_share = np.divide(
+        object_mean,
+        np.maximum(base_mean, 1e-6),
+        out=np.zeros_like(object_mean, dtype=np.float32),
+        where=base_mean > 1e-6,
+    )
+    object_gate = np.clip(
+        (object_share - float(object_ratio)) / max(1.0 - float(object_ratio), 1e-6),
+        0.0,
+        1.0,
+    )
+    gate = total_gate * object_gate * float(np.clip(strength, 0.0, 1.0))
+    if not np.any(gate > 1e-6):
+        return vectors
+
+    ratio = max(_finger_ratio_value(target_ratio, finger, DEFAULT_COOCCURRENT_SELFTOUCH_TARGET_RATIO), 0.0)
+    target_mean = np.maximum(self_mean, base_mean * ratio)
+    target_sum = (self_mean + gate * np.maximum(target_mean - self_mean, 0.0)) * float(taxels)
+    current_sum = np.sum(magnitudes, axis=1)
+    extra_sum = np.maximum(target_sum - current_sum, 0.0)
+    if not np.any(extra_sum > 1e-6):
+        return vectors
+
+    weights = _touch_region_weights(finger, taxels, region or "tip")
+    boosted = np.minimum(magnitudes + extra_sum[:, None] * weights[None, :], base)
+    out = np.array(vectors, copy=True)
+    out[:steps, :taxels] = _touch_direction_with_z_fallback(part, boosted)
+    return out
+
+
 def _touch_decompose_vectors_for_display(
     base_sample: Optional[np.ndarray],
     self_sample: Optional[np.ndarray],
     external_sample: Optional[np.ndarray] = None,
+    finger_name: Optional[str] = None,
+    selftouch_region: Optional[str] = None,
+    object_region: Optional[str] = None,
+    coactive_selftouch_fingers: Optional[Sequence[str]] = None,
+    coactive_selftouch_target_ratio=DEFAULT_COOCCURRENT_SELFTOUCH_TARGET_RATIO,
+    coactive_selftouch_object_ratio: float = DEFAULT_COOCCURRENT_SELFTOUCH_OBJECT_RATIO,
+    coactive_selftouch_total_percentile: float = DEFAULT_COOCCURRENT_SELFTOUCH_TOTAL_PERCENTILE,
+    coactive_selftouch_strength: float = DEFAULT_COOCCURRENT_SELFTOUCH_STRENGTH,
+    selftouch_region_strength: float = 0.90,
+    object_region_strength: float = DEFAULT_OBJECT_FRONT_CENTER_STRENGTH,
 ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
     """Return nonnegative self/object components for plotting.
 
-    The frozen self-touch model can occasionally predict a larger vector than
-    the total tactile stream. For display, clamp that component to the available
-    total magnitude so the residual does not become a large artificial object
-    touch after taking vector norms.
+    The frozen self-touch model can occasionally predict a larger and broader
+    vector field than the total tactile stream. For display, clamp that
+    component to the available total magnitude, keep the strongest localized
+    self-touch taxels, and keep the front pad object-priority before forming
+    the residual object-touch field.
     """
     self_vectors = _touch_taxel_vector_sequence(self_sample)
     external_vectors = _touch_taxel_vector_sequence(external_sample)
@@ -1550,14 +1961,47 @@ def _touch_decompose_vectors_for_display(
     self_mag = np.linalg.norm(self_part, axis=-1)
     clipped_self_mag = np.minimum(base_mag, self_mag)
     clipped_self = _touch_scale_vectors_to_magnitude(self_part, clipped_self_mag)
+    localized_self = _touch_localize_self_vectors(clipped_self, finger_name=finger_name)
+    localized_self = _touch_object_priority_front_vectors(
+        localized_self,
+        base_mag,
+        finger_name=finger_name,
+    )
+    localized_self = _touch_reduce_weak_self_background(localized_self, base_mag)
+    if selftouch_region:
+        localized_self = _touch_project_vectors_to_region(
+            localized_self,
+            finger_name=finger_name,
+            region=selftouch_region,
+            strength=selftouch_region_strength,
+        )
+    localized_self = _touch_boost_coactive_selftouch(
+        localized_self,
+        base_mag,
+        finger_name=finger_name,
+        enabled_fingers=coactive_selftouch_fingers,
+        target_ratio=coactive_selftouch_target_ratio,
+        object_ratio=coactive_selftouch_object_ratio,
+        total_percentile=coactive_selftouch_total_percentile,
+        strength=coactive_selftouch_strength,
+        region=selftouch_region,
+    )
+    localized_self_mag = np.linalg.norm(localized_self, axis=-1)
 
     if external_vectors is not None:
         external_steps = min(external_vectors.shape[0], steps)
         external_taxels = min(external_vectors.shape[1], taxels)
-        return clipped_self[:external_steps, :external_taxels], external_vectors[:external_steps, :external_taxels]
+        external_part = external_vectors[:external_steps, :external_taxels]
+        external_part = _touch_project_vectors_to_region(
+            external_part,
+            finger_name=finger_name,
+            region=object_region or "tip",
+            strength=object_region_strength,
+        )
+        return localized_self[:external_steps, :external_taxels], external_part
 
-    residual_mag = np.maximum(base_mag - clipped_self_mag, 0.0)
-    residual = base - clipped_self
+    residual_mag = np.maximum(base_mag - localized_self_mag, 0.0)
+    residual = base - localized_self
     residual_norm = np.linalg.norm(residual, axis=-1)
     base_norm = np.maximum(base_mag, 1e-6)
     residual_dir = np.divide(
@@ -1570,7 +2014,13 @@ def _touch_decompose_vectors_for_display(
     use_residual = residual_norm[..., None] > 1e-6
     direction = np.where(use_residual, residual_dir, base_dir)
     external_part = direction * residual_mag[..., None]
-    return clipped_self, external_part
+    external_part = _touch_project_vectors_to_region(
+        external_part,
+        finger_name=finger_name,
+        region=object_region or "tip",
+        strength=object_region_strength,
+    )
+    return localized_self, external_part
 
 
 def _touch_peak(matrix: Optional[np.ndarray], steps: int) -> Tuple[np.ndarray, np.ndarray]:
@@ -1597,6 +2047,26 @@ def _touch_plot_tag(tag: str) -> str:
     return safe.strip("_") or "inference"
 
 
+def _touch_region_for_finger(regions, finger_name: str) -> Optional[str]:
+    if regions is None:
+        return None
+    if isinstance(regions, str):
+        text = regions.strip().lower()
+        return None if text in {"", "none", "off", "false", "auto"} else text
+    if isinstance(regions, Mapping):
+        name = _normalise_finger_name(finger_name)
+        candidates = (
+            name,
+            FINGER_TO_KEY.get(name, ""),
+            f"tactile_{name}_tip",
+        )
+        for candidate in candidates:
+            if candidate in regions:
+                value = regions.get(candidate)
+                return None if value is None else str(value).strip().lower()
+    return None
+
+
 def plot_touch_decomposition_profiles(
     *,
     total_touch: Mapping[str, object],
@@ -1610,16 +2080,26 @@ def plot_touch_decomposition_profiles(
     external_touch: Optional[Mapping[str, object]] = None,
     finger_names: Sequence[str] = FINGER_ORDER,
     finger_keys: Optional[Sequence[str]] = None,
+    selftouch_regions: Optional[Mapping[str, str]] = None,
+    object_regions: Optional[Mapping[str, str]] = None,
+    inactive_fingers: Optional[Sequence[str]] = None,
+    coactive_selftouch_fingers: Optional[Sequence[str]] = None,
+    coactive_selftouch_target_ratio=DEFAULT_COOCCURRENT_SELFTOUCH_TARGET_RATIO,
+    coactive_selftouch_object_ratio: float = DEFAULT_COOCCURRENT_SELFTOUCH_OBJECT_RATIO,
+    coactive_selftouch_total_percentile: float = DEFAULT_COOCCURRENT_SELFTOUCH_TOTAL_PERCENTILE,
+    coactive_selftouch_strength: float = DEFAULT_COOCCURRENT_SELFTOUCH_STRENGTH,
+    selftouch_region_strength: float = 0.90,
+    object_region_strength: float = DEFAULT_OBJECT_FRONT_CENTER_STRENGTH,
     timesteps: Optional[Sequence[int]] = None,
     sample_index: int = 0,
     tag: str = "inference",
-    title: str = "Self-touch and external-touch decomposition",
+    title: str = "Self-touch and object-touch decomposition",
 ) -> Dict[str, str]:
     """Save per-fingertip touch decomposition mean-magnitude traces.
 
     ``total_touch`` is the full tactile prediction/observation. ``self_touch`` is
     the frozen self-touch estimate. When ``external_touch`` is absent, the plot
-    shows a nonnegative residual component after clamping self-touch to the
+    shows a nonnegative object-touch residual after clamping self-touch to the
     available total magnitude.
     """
     try:
@@ -1632,6 +2112,7 @@ def plot_touch_decomposition_profiles(
 
     keys = list(finger_keys) if finger_keys is not None else [FINGER_TO_KEY[name] for name in finger_names]
     names = [str(name).replace("tactile_", "").replace("_tip", "") for name in finger_names]
+    inactive = _normalised_name_set(inactive_fingers)
     os.makedirs(plot_dir, exist_ok=True)
 
     profiles = []
@@ -1683,7 +2164,22 @@ def plot_touch_decomposition_profiles(
             base_sample,
             self_sample,
             external_sample,
+            finger_name=name,
+            selftouch_region=_touch_region_for_finger(selftouch_regions, name),
+            object_region=_touch_region_for_finger(object_regions, name),
+            coactive_selftouch_fingers=coactive_selftouch_fingers,
+            coactive_selftouch_target_ratio=coactive_selftouch_target_ratio,
+            coactive_selftouch_object_ratio=coactive_selftouch_object_ratio,
+            coactive_selftouch_total_percentile=coactive_selftouch_total_percentile,
+            coactive_selftouch_strength=coactive_selftouch_strength,
+            selftouch_region_strength=selftouch_region_strength,
+            object_region_strength=object_region_strength,
         )
+        if _normalise_finger_name(name) in inactive:
+            if self_vectors is not None:
+                self_vectors = np.zeros_like(self_vectors)
+            if external_vectors is not None:
+                external_vectors = np.zeros_like(external_vectors)
 
         total_matrix, ylabel = _touch_location_map(total_sample)
         self_matrix, _ = _touch_location_map(_touch_vectors_to_flat(self_vectors))
@@ -1737,15 +2233,15 @@ def plot_touch_decomposition_profiles(
                 "total_mean_magnitude",
                 "raw_mean_magnitude",
                 "selftouch_mean_magnitude",
-                "external_mean_magnitude",
+                "object_mean_magnitude",
                 "total_peak_taxel",
                 "raw_peak_taxel",
                 "selftouch_peak_taxel",
-                "external_peak_taxel",
+                "object_peak_taxel",
                 "total_peak_magnitude",
                 "raw_peak_magnitude",
                 "selftouch_peak_magnitude",
-                "external_peak_magnitude",
+                "object_peak_magnitude",
             ]
         )
 
@@ -1753,7 +2249,6 @@ def plot_touch_decomposition_profiles(
             name = profile["name"]
             steps = profile["steps"]
             ts = base_timesteps[:steps]
-            color = FINGER_COLORS.get(name, "#3f7fba")
             total_matrix = profile["total"]
             raw_matrix = profile["raw"]
             self_matrix = profile["self"]
@@ -1772,18 +2267,16 @@ def plot_touch_decomposition_profiles(
             if total_matrix is not None:
                 ax_trace.plot(ts, total_series, color="black", linewidth=1.8, label="total")
             if self_matrix is not None:
-                ax_trace.plot(ts, self_series, color=color, linewidth=1.9, label="self-touch")
+                ax_trace.plot(ts, self_series, color="#2ca25f", linewidth=1.9, label="self-touch")
             if external_matrix is not None:
-                ax_trace.plot(ts, external_series, color="#d95f02", linewidth=1.9, label="external")
-            if raw_matrix is not None:
-                ax_trace.plot(ts, raw_series, color="#7a7a7a", linewidth=1.2, alpha=0.70, label="raw")
+                ax_trace.plot(ts, external_series, color="#2b6cb0", linewidth=1.9, label="object touch")
             ax_trace.set_title(f"{name.capitalize()} mean contact magnitude", fontsize=10)
             ax_trace.set_ylabel("mean magnitude")
             ax_trace.grid(True, alpha=0.25)
             ax_trace.legend(
                 fontsize=8,
                 loc="upper right",
-                ncol=4,
+                ncol=3,
                 framealpha=0.92,
             )
 
@@ -1847,10 +2340,22 @@ def save_touch_decomposition_visualization(
     external_touch: Optional[Mapping[str, object]] = None,
     finger_names: Sequence[str] = FINGER_ORDER,
     finger_keys: Optional[Sequence[str]] = None,
+    selftouch_regions: Optional[Mapping[str, str]] = None,
+    object_regions: Optional[Mapping[str, str]] = None,
+    inactive_fingers: Optional[Sequence[str]] = None,
+    coactive_selftouch_fingers: Optional[Sequence[str]] = None,
+    coactive_selftouch_target_ratio=DEFAULT_COOCCURRENT_SELFTOUCH_TARGET_RATIO,
+    coactive_selftouch_object_ratio: float = DEFAULT_COOCCURRENT_SELFTOUCH_OBJECT_RATIO,
+    coactive_selftouch_total_percentile: float = DEFAULT_COOCCURRENT_SELFTOUCH_TOTAL_PERCENTILE,
+    coactive_selftouch_strength: float = DEFAULT_COOCCURRENT_SELFTOUCH_STRENGTH,
+    selftouch_region_strength: float = 0.90,
+    object_region_strength: float = DEFAULT_OBJECT_FRONT_CENTER_STRENGTH,
     sample_index: int = 0,
     tag: str = "inference",
+    title: Optional[str] = None,
     fps: int = 10,
     frame_stride: int = 1,
+    clim_percentile: float = 99.0,
 ) -> Dict[str, str]:
     """Save a four-fingertip XELA-style video for self-touch/object-touch state."""
     try:
@@ -1861,6 +2366,7 @@ def save_touch_decomposition_visualization(
 
     keys = list(finger_keys) if finger_keys is not None else [FINGER_TO_KEY[name] for name in finger_names]
     names = [str(name).replace("tactile_", "").replace("_tip", "") for name in finger_names]
+    inactive = _normalised_name_set(inactive_fingers)
     os.makedirs(plot_dir, exist_ok=True)
 
     touch_state = {}
@@ -1914,7 +2420,22 @@ def save_touch_decomposition_visualization(
             base_sample,
             self_sample,
             object_sample,
+            finger_name=name,
+            selftouch_region=_touch_region_for_finger(selftouch_regions, name),
+            object_region=_touch_region_for_finger(object_regions, name),
+            coactive_selftouch_fingers=coactive_selftouch_fingers,
+            coactive_selftouch_target_ratio=coactive_selftouch_target_ratio,
+            coactive_selftouch_object_ratio=coactive_selftouch_object_ratio,
+            coactive_selftouch_total_percentile=coactive_selftouch_total_percentile,
+            coactive_selftouch_strength=coactive_selftouch_strength,
+            selftouch_region_strength=selftouch_region_strength,
+            object_region_strength=object_region_strength,
         )
+        if _normalise_finger_name(name) in inactive:
+            if self_vectors is not None:
+                self_vectors = np.zeros_like(self_vectors)
+            if object_vectors is not None:
+                object_vectors = np.zeros_like(object_vectors)
         touch_state[name] = {
             "selftouch": self_vectors,
             "object": object_vectors,
@@ -1926,7 +2447,11 @@ def save_touch_decomposition_visualization(
 
     tag = _touch_plot_tag(tag)
     path = os.path.join(plot_dir, f"touch_decomposition_{tag}_visualizer.mp4")
-    visualizer = FourFingerTouchStateVisualizer(fingers=names)
+    visualizer = FourFingerTouchStateVisualizer(
+        fingers=names,
+        clim_percentile=clim_percentile,
+        title=title or f"Touch states ({tag})",
+    )
     video_path = visualizer.export_touch_state_video(
         touch_state,
         path=path,

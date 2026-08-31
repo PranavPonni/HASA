@@ -11,12 +11,12 @@ if ffmpeg_bin:
 
 
 XELA_COORDS_INDEX = [
-    (5, 3), (5, 2), (5, 1), (5, 0),
-    (4, 4), (4, 3), (4, 2), (4, 1), (4, 0),
-    (3, 5), (3, 4), (3, 3), (3, 2), (3, 1), (3, 0),
-    (2, 5), (2, 4), (2, 3), (2, 2), (2, 1), (2, 0),
+    (0, 3), (0, 2), (0, 1), (0, 0),
     (1, 4), (1, 3), (1, 2), (1, 1), (1, 0),
-    (0, 3), (0, 2), (0, 1), (0, 0)
+    (2, 5), (2, 4), (2, 3), (2, 2), (2, 1), (2, 0),
+    (3, 5), (3, 4), (3, 3), (3, 2), (3, 1), (3, 0),
+    (4, 4), (4, 3), (4, 2), (4, 1), (4, 0),
+    (5, 3), (5, 2), (5, 1), (5, 0)
 ]
 
 XELA_COORDS_THUMB = [
@@ -28,16 +28,29 @@ XELA_COORDS_THUMB = [
     (0, 3), (0, 0), (0, 1), (0, 2)
 ]
 
-XELA_COORDS_INDEX_LIKE = XELA_COORDS_INDEX
+XELA_COORDS_MIDDLE = [
+    (5, 3), (5, 2), (5, 1), (5, 0),
+    (4, 4), (4, 3), (4, 2), (4, 1), (4, 0),
+    (3, 5), (3, 4), (3, 3), (3, 2), (3, 1), (3, 0),
+    (2, 5), (2, 4), (2, 3), (2, 2), (2, 1), (2, 0),
+    (1, 4), (1, 3), (1, 2), (1, 1), (1, 0),
+    (0, 3), (0, 2), (0, 1), (0, 0)
+]
+
+XELA_COORDS_RING = [
+    (0, 3), (0, 2), (0, 1), (0, 0),
+    (1, 4), (1, 3), (1, 2), (1, 1), (1, 0),
+    (2, 5), (2, 4), (2, 3), (2, 2), (2, 1), (2, 0),
+    (3, 5), (3, 4), (3, 3), (3, 2), (3, 1), (3, 0),
+    (4, 4), (4, 3), (4, 2), (4, 1), (4, 0),
+    (5, 3), (5, 2), (5, 1), (5, 0)
+]
 
 FINGER_COORDS = {
     "index": XELA_COORDS_INDEX,
     "thumb": XELA_COORDS_THUMB,
-}
-
-UNVERIFIED_FINGER_COORD_FALLBACKS = {
-    "middle": XELA_COORDS_INDEX,
-    "ring": XELA_COORDS_INDEX,
+    "middle": XELA_COORDS_MIDDLE,
+    "ring": XELA_COORDS_RING,
 }
 
 
@@ -180,7 +193,7 @@ class DualXelaVisualizer:
 class FourFingerTouchStateVisualizer:
     """Render self-touch and object-touch state on all four XELA fingertips."""
 
-    FINGER_ORDER = ("index", "thumb", "middle", "ring")
+    FINGER_ORDER = ("thumb", "index", "middle", "ring")
     STATE_ORDER = ("selftouch", "object")
     STATE_TITLES = {
         "selftouch": "Self-touch",
@@ -188,17 +201,19 @@ class FourFingerTouchStateVisualizer:
     }
     STATE_CMAPS = {
         "selftouch": "magma",
-        "object": "viridis",
+        "object": "inferno",
     }
     STATE_ARROW_COLORS = {
         "selftouch": "#70f7ff",
         "object": "#f4f4f4",
     }
 
-    def __init__(self, fingers=None, clim_max=None):
+    def __init__(self, fingers=None, clim_max=None, clim_percentile=99.0, title="Touch states"):
         self.fingers = tuple(fingers or self.FINGER_ORDER)
         self.clim_min = 0.0
         self.clim_max = clim_max
+        self.clim_percentile = float(clim_percentile or 99.0)
+        self.title = str(title or "Touch states")
         self.fig, self.axes = plt.subplots(
             len(self.fingers),
             len(self.STATE_ORDER),
@@ -236,11 +251,8 @@ class FourFingerTouchStateVisualizer:
     def _coords_for_finger(self, finger, taxel_count):
         coords = FINGER_COORDS.get(finger)
         if coords is None:
-            coords = UNVERIFIED_FINGER_COORD_FALLBACKS.get(finger, XELA_COORDS_INDEX)
-            print(
-                f"[vis] {finger} taxel layout is not PlotJuggler-verified; "
-                "using index fallback layout."
-            )
+            coords = XELA_COORDS_INDEX
+            print(f"[vis] no taxel layout for {finger}; using index fallback layout.")
         coords = list(coords)
         if len(coords) >= taxel_count:
             coords = coords[:taxel_count]
@@ -370,7 +382,8 @@ class FourFingerTouchStateVisualizer:
                 if values:
                     finite = np.concatenate(values)
                     finite = finite[np.isfinite(finite)]
-                    vmax = float(np.percentile(finite, 99)) if finite.size else 1.0
+                    percentile = float(np.clip(self.clim_percentile, 50.0, 100.0))
+                    vmax = float(np.percentile(finite, percentile)) if finite.size else 1.0
                 else:
                     vmax = 1.0
             vmax = max(vmax, 1e-6)
@@ -442,7 +455,7 @@ class FourFingerTouchStateVisualizer:
                     artist["peak"].set_visible(False)
                     peak_text = ""
                 artist["value_text"].set_text(peak_text)
-        self.fig.suptitle(f"Touch states  |  frame {frame}", color="white", fontsize=13)
+        self.fig.suptitle(f"{self.title}  |  frame {frame}", color="white", fontsize=13)
 
     def export_touch_state_video(self, touch_state, path, fps=10, frame_stride=1):
         touch_state = self._normalise_touch_state(touch_state)
@@ -453,7 +466,9 @@ class FourFingerTouchStateVisualizer:
             for arr in finger_data.values()
         )
         frame_stride = max(int(frame_stride or 1), 1)
-        frames = range(0, frame_count, frame_stride)
+        frames = list(range(0, frame_count, frame_stride))
+        if not frames:
+            raise ValueError("touch-state video export has no frames")
 
         out_dir = os.path.dirname(path) or "."
         os.makedirs(out_dir, exist_ok=True)
@@ -470,11 +485,22 @@ class FourFingerTouchStateVisualizer:
             writer = PillowWriter(fps=fps)
             print(f"[vis] ffmpeg not available; saving touch-state GIF to {out_path} ...")
 
-        with writer.saving(self.fig, out_path, dpi=110):
-            for frame in frames:
-                self.update_frame(frame, touch_state)
-                self.fig.canvas.draw()
-                writer.grab_frame(facecolor=self.fig.get_facecolor())
+        root, ext = os.path.splitext(out_path)
+        tmp_path = f"{root}.tmp{ext or '.mp4'}"
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        try:
+            with writer.saving(self.fig, tmp_path, dpi=110):
+                for frame in frames:
+                    self.update_frame(frame, touch_state)
+                    self.fig.canvas.draw()
+                    writer.grab_frame(facecolor=self.fig.get_facecolor())
+            if not os.path.isfile(tmp_path) or os.path.getsize(tmp_path) <= 0:
+                raise RuntimeError(f"touch-state video writer produced an empty file: {tmp_path}")
+            os.replace(tmp_path, out_path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
         print("Touch-state video export complete.")
         return out_path
 
