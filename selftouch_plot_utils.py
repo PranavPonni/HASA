@@ -2041,6 +2041,81 @@ def _touch_series(matrix: Optional[np.ndarray], steps: int) -> np.ndarray:
     return np.nanmean(matrix, axis=0).astype(np.float32, copy=False)
 
 
+def _duplicate_selftouch_profile_rows(profiles: Sequence[Mapping]) -> Tuple[List[Dict[str, object]], set]:
+    """Find suspicious duplicate self-touch traces across different fingers.
+
+    A pair is flagged only when the exported self-touch mean traces are identical
+    while the total/raw/object traces differ, which indicates an export/source
+    problem rather than a naturally symmetric contact episode.
+    """
+    rows: List[Dict[str, object]] = []
+    drop_names = set()
+    for left_idx, left in enumerate(profiles):
+        left_steps = int(left.get("steps", 0) or 0)
+        left_self = _touch_series(left.get("self"), left_steps)
+        for right in profiles[left_idx + 1 :]:
+            right_steps = int(right.get("steps", 0) or 0)
+            n = min(left_steps, right_steps, left_self.size)
+            if n < 3:
+                continue
+            right_self = _touch_series(right.get("self"), right_steps)[:n]
+            left_cmp = left_self[:n]
+            mask = np.isfinite(left_cmp) & np.isfinite(right_self)
+            if int(mask.sum()) < 3:
+                continue
+            if not np.allclose(left_cmp[mask], right_self[mask], rtol=1e-7, atol=1e-7):
+                continue
+            differing_context = False
+            context_mad = {}
+            for key in ("total", "raw", "external"):
+                left_context = _touch_series(left.get(key), left_steps)[:n]
+                right_context = _touch_series(right.get(key), right_steps)[:n]
+                context_mask = np.isfinite(left_context) & np.isfinite(right_context)
+                if int(context_mask.sum()) < 3:
+                    continue
+                mad = float(np.mean(np.abs(left_context[context_mask] - right_context[context_mask])))
+                context_mad[f"{key}_mean_abs_difference"] = mad
+                differing_context = differing_context or mad > 1e-6
+            if not differing_context:
+                continue
+            left_name = str(left.get("name", ""))
+            right_name = str(right.get("name", ""))
+            drop_names.update({left_name, right_name})
+            rows.append(
+                {
+                    "left_finger": left_name,
+                    "right_finger": right_name,
+                    "n_compared_timesteps": int(mask.sum()),
+                    "action": "drop_both_from_export",
+                    "reason": (
+                        "identical self-touch mean traces with differing total/raw/object context"
+                    ),
+                    **context_mad,
+                }
+            )
+    return rows, drop_names
+
+
+def _write_duplicate_selftouch_audit(path: str, rows: Sequence[Mapping[str, object]]) -> None:
+    if not rows:
+        return
+    fieldnames = [
+        "left_finger",
+        "right_finger",
+        "n_compared_timesteps",
+        "action",
+        "reason",
+        "total_mean_abs_difference",
+        "raw_mean_abs_difference",
+        "external_mean_abs_difference",
+    ]
+    with open(path, "w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: row.get(key, "") for key in fieldnames})
+
+
 def _touch_plot_tag(tag: str) -> str:
     text = str(tag or "inference")
     safe = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in text)
@@ -2205,6 +2280,24 @@ def plot_touch_decomposition_profiles(
         return {}
 
     max_steps = max(profile["steps"] for profile in profiles)
+    tag = _touch_plot_tag(tag)
+    duplicate_rows, duplicate_drop_names = _duplicate_selftouch_profile_rows(profiles)
+    if duplicate_rows:
+        audit_path = os.path.join(plot_dir, f"touch_decomposition_{tag}_duplicate_audit.csv")
+        _write_duplicate_selftouch_audit(audit_path, duplicate_rows)
+        drop_label = ", ".join(sorted(duplicate_drop_names))
+        print(
+            "[warn] dropped duplicated self-touch profiles from "
+            f"touch decomposition export ({drop_label}); audit: {audit_path}"
+        )
+        profiles = [
+            profile
+            for profile in profiles
+            if str(profile.get("name", "")) not in duplicate_drop_names
+        ]
+        if not profiles:
+            return {"touch_decomposition_duplicate_audit": audit_path}
+        max_steps = max(profile["steps"] for profile in profiles)
     if timesteps is None:
         base_timesteps = np.arange(max_steps, dtype=np.int64)
     else:
@@ -2214,7 +2307,6 @@ def plot_touch_decomposition_profiles(
             pad = np.arange(pad_start, pad_start + max_steps - base_timesteps.size, dtype=np.int64)
             base_timesteps = np.concatenate([base_timesteps, pad])
 
-    tag = _touch_plot_tag(tag)
     fig, axes = plt.subplots(
         len(profiles),
         1,
@@ -2305,7 +2397,10 @@ def plot_touch_decomposition_profiles(
     image_path = os.path.join(plot_dir, f"touch_decomposition_{tag}.png")
     fig.savefig(image_path, dpi=160)
     plt.close(fig)
-    return {"touch_decomposition": image_path, "touch_decomposition_csv": csv_path}
+    result = {"touch_decomposition": image_path, "touch_decomposition_csv": csv_path}
+    if duplicate_rows:
+        result["touch_decomposition_duplicate_audit"] = audit_path
+    return result
 
 
 def _touch_taxel_vector_sequence(sample: Optional[np.ndarray]) -> Optional[np.ndarray]:
@@ -2450,7 +2545,7 @@ def save_touch_decomposition_visualization(
     visualizer = FourFingerTouchStateVisualizer(
         fingers=names,
         clim_percentile=clim_percentile,
-        title=title or f"Touch states ({tag})",
+        title=title or "Touch states",
     )
     video_path = visualizer.export_touch_state_video(
         touch_state,
