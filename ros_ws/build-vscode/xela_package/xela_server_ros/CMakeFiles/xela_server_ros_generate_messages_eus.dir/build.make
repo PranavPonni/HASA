@@ -63,16 +63,16 @@ xela_package/xela_server_ros/CMakeFiles/xela_server_ros_generate_messages_eus: d
 
 devel/share/roseus/ros/xela_server_ros/msg/SensorFull.l: /opt/ros/noetic/lib/geneus/gen_eus.py
 devel/share/roseus/ros/xela_server_ros/msg/SensorFull.l: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensorFull.msg
-devel/share/roseus/ros/xela_server_ros/msg/SensorFull.l: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Taxel.msg
 devel/share/roseus/ros/xela_server_ros/msg/SensorFull.l: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Forces.msg
+devel/share/roseus/ros/xela_server_ros/msg/SensorFull.l: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Taxel.msg
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --blue --bold --progress-dir=/home/handlingteam2/HASA/ros_ws/build-vscode/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Generating EusLisp code from xela_server_ros/SensorFull.msg"
 	cd /home/handlingteam2/HASA/ros_ws/build-vscode/xela_package/xela_server_ros && ../../catkin_generated/env_cached.sh /usr/bin/python3 /opt/ros/noetic/share/geneus/cmake/../../../lib/geneus/gen_eus.py /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensorFull.msg -Ixela_server_ros:/home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg -Istd_msgs:/opt/ros/noetic/share/std_msgs/cmake/../msg -Igeometry_msgs:/opt/ros/noetic/share/geometry_msgs/cmake/../msg -p xela_server_ros -o /home/handlingteam2/HASA/ros_ws/build-vscode/devel/share/roseus/ros/xela_server_ros/msg
 
 devel/share/roseus/ros/xela_server_ros/msg/SensStream.l: /opt/ros/noetic/lib/geneus/gen_eus.py
 devel/share/roseus/ros/xela_server_ros/msg/SensStream.l: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensStream.msg
+devel/share/roseus/ros/xela_server_ros/msg/SensStream.l: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Forces.msg
 devel/share/roseus/ros/xela_server_ros/msg/SensStream.l: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Taxel.msg
 devel/share/roseus/ros/xela_server_ros/msg/SensStream.l: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensorFull.msg
-devel/share/roseus/ros/xela_server_ros/msg/SensStream.l: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Forces.msg
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --blue --bold --progress-dir=/home/handlingteam2/HASA/ros_ws/build-vscode/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Generating EusLisp code from xela_server_ros/SensStream.msg"
 	cd /home/handlingteam2/HASA/ros_ws/build-vscode/xela_package/xela_server_ros && ../../catkin_generated/env_cached.sh /usr/bin/python3 /opt/ros/noetic/share/geneus/cmake/../../../lib/geneus/gen_eus.py /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensStream.msg -Ixela_server_ros:/home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg -Istd_msgs:/opt/ros/noetic/share/std_msgs/cmake/../msg -Igeometry_msgs:/opt/ros/noetic/share/geometry_msgs/cmake/../msg -p xela_server_ros -o /home/handlingteam2/HASA/ros_ws/build-vscode/devel/share/roseus/ros/xela_server_ros/msg
 
@@ -88,9 +88,9 @@ devel/share/roseus/ros/xela_server_ros/msg/Forces.l: /home/handlingteam2/HASA/ro
 
 devel/share/roseus/ros/xela_server_ros/srv/XelaSensorStream.l: /opt/ros/noetic/lib/geneus/gen_eus.py
 devel/share/roseus/ros/xela_server_ros/srv/XelaSensorStream.l: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/srv/XelaSensorStream.srv
+devel/share/roseus/ros/xela_server_ros/srv/XelaSensorStream.l: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Forces.msg
 devel/share/roseus/ros/xela_server_ros/srv/XelaSensorStream.l: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Taxel.msg
 devel/share/roseus/ros/xela_server_ros/srv/XelaSensorStream.l: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/SensorFull.msg
-devel/share/roseus/ros/xela_server_ros/srv/XelaSensorStream.l: /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg/Forces.msg
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --blue --bold --progress-dir=/home/handlingteam2/HASA/ros_ws/build-vscode/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Generating EusLisp code from xela_server_ros/XelaSensorStream.srv"
 	cd /home/handlingteam2/HASA/ros_ws/build-vscode/xela_package/xela_server_ros && ../../catkin_generated/env_cached.sh /usr/bin/python3 /opt/ros/noetic/share/geneus/cmake/../../../lib/geneus/gen_eus.py /home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/srv/XelaSensorStream.srv -Ixela_server_ros:/home/handlingteam2/HASA/ros_ws/src/xela_package/xela_server_ros/msg -Istd_msgs:/opt/ros/noetic/share/std_msgs/cmake/../msg -Igeometry_msgs:/opt/ros/noetic/share/geometry_msgs/cmake/../msg -p xela_server_ros -o /home/handlingteam2/HASA/ros_ws/build-vscode/devel/share/roseus/ros/xela_server_ros/srv
 

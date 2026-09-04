@@ -131,7 +131,7 @@ from py_node_exec import NodeExec
 from allegro_package import AllegroHand
 from xela_py import TactileSubscriber
 
-DATA_DIR = "/home/handlingteam2/HASA/user/pranav/example/data/tasks/bigbolt2"
+DATA_DIR = "/home/handlingteam2/HASA/user/pranav/example/data/tasks/newbolt"
 MAX_TIMESTEP = 200
 CTRL_FREQ = 10.0
 HAND_TOPIC_PREFIX = "allegroHand_0"

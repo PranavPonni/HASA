@@ -17,7 +17,7 @@ from allegro_package import AllegroHand
 from xela_py import TactileSubscriber
 from allegro_leader import AllegroPrecesionGrasp
 
-DATA_DIR = "/home/handlingteam2/HASA/user/pranav/example/data/tasks/kmwipe"
+DATA_DIR = "/home/handlingteam2/HASA/user/pranav/example/data/tasks/newsmallbolt"
 MAX_TIMESTEP = 100
 CTRL_FREQ = 15.0
 HAND_TOPIC_PREFIX = "allegroHand_0"
