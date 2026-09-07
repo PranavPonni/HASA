@@ -29,12 +29,27 @@ CTRL_FREQ = 15.0
 MAX_TIMESTEP = 300
 DATA_DIR = "/home/handlingteam2/HASA/user/pranav/example/data/tasks/newsmallbolt"
 TACTILE_TOPICS = ("thumb_tip", "middle_tip")
+DEFAULT_TORQUE_BIAS = 0.08
 
 # Allegro order: index[0:4], middle[4:8], ring[8:12], thumb[12:16].
 ACTIVE_JOINT_INDICES = np.array((4, 5, 6, 7, 12, 13, 14, 15), dtype=int)
 ACTIVE_JOINT_NAMES = (
     "middle_0", "middle_1", "middle_2", "middle_3",
     "thumb_0", "thumb_1", "thumb_2", "thumb_3",
+)
+
+# Positive torque closes the three flexion joints of the middle and thumb.
+# Spread/abduction joints remain unbiased.  The values are desired training
+# labels only; controller `off` mode keeps them from being applied while the
+# demonstration is recorded.
+TORQUE_BIAS_DIRECTION_16 = np.array(
+    (
+        0.0, 0.0, 0.0, 0.0,  # index
+        0.0, 1.0, 1.0, 1.0,  # middle
+        0.0, 0.0, 0.0, 0.0,  # ring
+        0.0, 1.0, 1.0, 1.0,  # thumb
+    ),
+    dtype=float,
 )
 
 
@@ -50,7 +65,7 @@ def flatten_dict(value, parent_key="", separator="_"):
 
 
 class DirectTeachingRobot:
-    def __init__(self, hand_topic_prefix, ctrl_freq):
+    def __init__(self, hand_topic_prefix, ctrl_freq, torque_bias):
         self.hand = AllegroHand(
             hand_topic_prefix=hand_topic_prefix, ctrl_freq=ctrl_freq
         )
@@ -58,6 +73,7 @@ class DirectTeachingRobot:
             topic: TactileSubscriber(topic_prefix=topic)
             for topic in TACTILE_TOPICS
         }
+        self.torque_bias_16 = TORQUE_BIAS_DIRECTION_16 * float(torque_bias)
 
     def disable_torque(self):
         # Keep the controller alive while disabling motor output.  Do not call
@@ -79,7 +95,13 @@ class DirectTeachingRobot:
 
         positions = np.asarray(hand["jnt_pos"], dtype=float)
         velocities = np.asarray(hand["jnt_vel"], dtype=float)
-        torques = np.asarray(hand["jnt_trq"], dtype=float)
+        measured_torques = np.asarray(hand["jnt_trq"], dtype=float)
+        # `hand_jnt_trq` is the canonical training target used by the motion
+        # models.  Preserve hardware feedback under an unambiguous key and put
+        # the requested thumb/middle closing bias in the target field.
+        hand = dict(hand)
+        hand["jnt_trq_measured"] = measured_torques.copy()
+        hand["jnt_trq"] = self.torque_bias_16.copy()
         last_position_command = hand.get("jnt_cmd_pos")
         if last_position_command is not None:
             last_position_command = np.asarray(last_position_command, dtype=float)
@@ -92,15 +114,17 @@ class DirectTeachingRobot:
                 "jnt_indices": ACTIVE_JOINT_INDICES.copy(),
                 "jnt_pos": positions[ACTIVE_JOINT_INDICES].copy(),
                 "jnt_vel": velocities[ACTIVE_JOINT_INDICES].copy(),
-                "jnt_trq": torques[ACTIVE_JOINT_INDICES].copy(),
+                "jnt_trq": self.torque_bias_16[ACTIVE_JOINT_INDICES].copy(),
+                "jnt_trq_measured": measured_torques[ACTIVE_JOINT_INDICES].copy(),
                 "jnt_cmd_pos": (
                     last_position_command[ACTIVE_JOINT_INDICES].copy()
                     if last_position_command is not None
                     else None
                 ),
-                # In controller `off` mode the effective motor torque command
-                # is zero.  jnt_trq above is the measured torque feedback.
-                "jnt_cmd_trq": np.zeros(len(ACTIVE_JOINT_INDICES), dtype=float),
+                "jnt_cmd_trq": self.torque_bias_16[ACTIVE_JOINT_INDICES].copy(),
+                "jnt_cmd_trq_applied_during_teaching": np.zeros(
+                    len(ACTIVE_JOINT_INDICES), dtype=float
+                ),
                 "control_mode": "off",
             },
             "timestamp": time.time(),
@@ -193,6 +217,15 @@ def parse_args(args=None):
     parser.add_argument("--frequency", type=float, default=CTRL_FREQ)
     parser.add_argument("--max-timestep", type=int, default=MAX_TIMESTEP)
     parser.add_argument("--hand-prefix", default=HAND_TOPIC_PREFIX)
+    parser.add_argument(
+        "--torque-bias",
+        type=float,
+        default=DEFAULT_TORQUE_BIAS,
+        help=(
+            "closing-torque label in Nm for thumb/middle flexion joints "
+            "(default: %(default)s; recorded but not applied during teaching)"
+        ),
+    )
     return parser.parse_args(args)
 
 
@@ -200,14 +233,22 @@ def main(args=None):
     config = parse_args(args)
     if config.frequency <= 0 or config.max_timestep <= 0:
         raise ValueError("--frequency and --max-timestep must be positive")
+    if not 0.0 <= config.torque_bias <= 0.5:
+        raise ValueError("--torque-bias must be between 0.0 and 0.5 Nm")
 
     node = NodeExec(node_name="thumb_middle_direct_teaching", freq=config.frequency)
     node.spin_thread_start()
-    robot = DirectTeachingRobot(config.hand_prefix, config.frequency)
+    robot = DirectTeachingRobot(
+        config.hand_prefix, config.frequency, config.torque_bias
+    )
     episodes = EpisodeController(os.path.abspath(config.data_dir))
     keys = KeyboardHandler(episodes)
 
     print("[Info] Keep clear of pinch points, then physically move thumb and middle.")
+    print(
+        f"[Info] Recording {config.torque_bias:.3f} Nm thumb/middle closing-torque "
+        "targets (not applied during teaching)."
+    )
     print("[Info] Waiting one second for tactile data before measuring baselines...")
     time.sleep(1.0)
     tactile_offset = {
