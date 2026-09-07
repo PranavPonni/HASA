@@ -41,14 +41,18 @@ def _masked_mse(pred, target, mask):
     return (loss * mask).sum() / mask.sum().clamp_min(1.0)
 
 
-def _fit_timesteps(value, target_len):
-    """Crop or zero-pad temporal features to match the policy observation length."""
+def _fit_timesteps(value, target_len, front=False):
+    """Crop or zero-pad temporal features to match the policy observation length.
+
+    ``front=True`` keeps the most recent frames aligned with the most recent
+    observation steps (window-aligned self-touch features).
+    """
     if value.shape[1] == target_len:
         return value
     if value.shape[1] > target_len:
-        return value[:, :target_len]
+        return value[:, -target_len:] if front else value[:, :target_len]
     pad = value.new_zeros(value.shape[0], target_len - value.shape[1], value.shape[-1])
-    return torch.cat([value, pad], dim=1)
+    return torch.cat([pad, value], dim=1) if front else torch.cat([value, pad], dim=1)
 
 
 class SinusoidalPosEmb(nn.Module):
@@ -326,9 +330,19 @@ class DexWildMotionModel(nn.Module):
             loss_names = loss_names + ("selftouch_teacher",)
         self.loss_names = loss_names
 
+        # Self-touch input mode: 'append' (raw tactile + frozen self-touch prediction,
+        # legacy), 'residual_only' (raw tactile replaced by the object-touch residual
+        # raw - self-touch in sensor units, no appended features; same width as T-ACT),
+        # 'residual_plus_self' (residual replaces raw tactile, self-touch still appended).
+        self.selftouch_feature_mode = str(param.get("selftouch_feature_mode", "append")).lower()
+        if self.selftouch_feature_mode not in {"append", "residual_only", "residual_plus_self"}:
+            raise ValueError(f"Unknown selftouch_feature_mode: {self.selftouch_feature_mode}")
+        if self.selftouch_feature_mode != "append" and not self.use_selftouch:
+            raise ValueError("selftouch_feature_mode requires use_selftouch: true")
+        self._residual_scalers = None
         obs_dim = len(self.tactile_keys) * self.tactile_dim
         obs_dim += len(self.joint_state_keys) * self.hand_dim
-        if self.use_selftouch:
+        if self.use_selftouch and self.selftouch_feature_mode != "residual_only":
             obs_dim += len(self.selftouch_feature_keys) * self.tactile_dim
         self.action_dim = len(self.tactile_keys) * self.tactile_dim
         self.action_dim += len(self.joint_state_keys) * self.hand_dim
@@ -357,6 +371,44 @@ class DexWildMotionModel(nn.Module):
 
     def uses_action_chunks(self):
         return self.arch == "act" and self.action_chunk_size > 0
+
+    def set_residual_scalers(self, scalers):
+        """Per-tactile-key affine maps (k_raw, c_raw, k_self, c_self) with scaled = phys*k + c."""
+        self._residual_scalers = {
+            key: tuple(torch.as_tensor(v, dtype=torch.float32) for v in vals)
+            for key, vals in scalers.items()
+        }
+
+    def _object_residual(self, key, raw_scaled, self_scaled):
+        if self._residual_scalers is None or key not in self._residual_scalers:
+            raise RuntimeError(
+                "selftouch_feature_mode=residual_* needs residual scalers; call "
+                "set_residual_scalers() (DexWildMotionController does this after loading data)."
+            )
+        k_raw, c_raw, k_self, c_self = (
+            t.to(device=raw_scaled.device, dtype=raw_scaled.dtype) for t in self._residual_scalers[key]
+        )
+        raw_phys = (raw_scaled - c_raw) / k_raw
+        self_phys = (self_scaled - c_self) / k_self
+        # residual in sensor units, re-expressed in the policy's raw-tactile scale
+        # (zero-centred; 1.0 == the 2-98% range of the raw signal) and clamped so that
+        # frozen-model outliers cannot dominate the observation.
+        return ((raw_phys - self_phys) * k_raw).clamp(-1.0, 1.0)
+
+    def window_aligned_selftouch(self):
+        """True when chunked-ACT self-touch features are aligned to the observation window.
+
+        Legacy chunked SAT runs cached the frozen self-touch features for the whole
+        episode and the chunk loss sliced the first ``act_obs_steps`` frames, i.e.
+        the policy saw the episode-start features for every window while the robot
+        rollout fed it live window features. ``Model.selftouch_feature_align: window``
+        makes both paths use the features of the observed steps.
+        """
+        return (
+            self.use_selftouch
+            and self.uses_action_chunks()
+            and str(self.param.get("selftouch_feature_align", "legacy")).lower() == "window"
+        )
 
     def _expand_selftouch_joint(self, x):
         if x.shape[-1] == self.selftouch_input_dim:
@@ -604,11 +656,18 @@ class DexWildMotionModel(nn.Module):
         tactile_std = _noise_value(noise, "tactile_noise", 0.0)
         joint_std = _noise_value(noise, "joint_noise", 0.0)
 
+        st_features = self._selftouch_features(streams, **selftouch_kwargs)
+        mode = self.selftouch_feature_mode if st_features is not None else "append"
         parts = []
         for key in self.tactile_keys:
             seq = self._stream_sequence(streams, key)
             if drop_last:
                 seq = seq[:, :-1]
+            if mode != "append" and key in st_features:
+                self_seq = _fit_timesteps(
+                    st_features[key], seq.shape[1], front=self.window_aligned_selftouch()
+                )
+                seq = self._object_residual(key, seq, self_seq)
             parts.append(_add_noise(seq, tactile_std))
         for key in self.joint_state_keys:
             seq = self._stream_sequence(streams, key)
@@ -616,12 +675,15 @@ class DexWildMotionModel(nn.Module):
                 seq = seq[:, :-1]
             parts.append(_add_noise(seq, joint_std))
 
-        st_features = self._selftouch_features(streams, **selftouch_kwargs)
-        if st_features is not None:
+        if st_features is not None and mode != "residual_only":
             target_len = parts[0].shape[1]
             for key in self.selftouch_feature_keys:
                 parts.append(
-                    _fit_timesteps(st_features[key], target_len)
+                    _fit_timesteps(
+                        st_features[key],
+                        target_len,
+                        front=self.window_aligned_selftouch(),
+                    )
                     * self.selftouch_feature_scale
                 )
         return torch.cat(parts, dim=-1)
@@ -678,6 +740,13 @@ class DexWildMotionModel(nn.Module):
             obs_steps,
             reference_steps=total_steps,
         )
+        if self.window_aligned_selftouch() and self._precomputed_selftouch_features(
+            obs_streams, self._stream_sequence(obs_streams, "hand_jnt_pos")
+        ) is None:
+            raise RuntimeError(
+                "selftouch_feature_align=window requires cached (window-aligned) self-touch "
+                "features during training; enable Train.cache_selftouch_features."
+            )
         obs = self._build_obs(
             obs_streams,
             noise=noise,
@@ -912,11 +981,16 @@ class DexWildMotionModel(nn.Module):
             obs_steps,
             reference_steps=reference_steps,
         )
-        selftouch_kwargs = self._tail_temporal_mapping(
-            selftouch_kwargs,
-            obs_steps,
-            reference_steps=reference_steps,
-        )
+        # Window-aligned features: keep the full causal history for the frozen
+        # self-touch model (its TCN receptive field spans tens of steps) and let
+        # _build_obs keep the last ``obs_steps`` feature frames. This reproduces
+        # the cached training features exactly (the frozen model is causal).
+        if not self.window_aligned_selftouch():
+            selftouch_kwargs = self._tail_temporal_mapping(
+                selftouch_kwargs,
+                obs_steps,
+                reference_steps=reference_steps,
+            )
         obs = self._build_obs(streams, drop_last=False, **selftouch_kwargs)
         output_steps = int(output_steps or self.action_chunk_size or obs.shape[1])
         pred_actions, _ = self.policy(obs, None, output_steps=output_steps)
