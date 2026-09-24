@@ -89,8 +89,11 @@ private:
     double _pwm_max_global;                 ///< global max value of PWM command is limited by the input voltage
     double _pwm_max[DOF_JOINTS];            ///< max value of PWM command of each joint
     int    _encoder_offset[DOF_JOINTS];     ///< encoder offset
-    int    _encoder_direction[DOF_JOINTS];  ///< encoder direction
-    int    _motor_direction[DOF_JOINTS];    ///< motor direction
+    int    _encoder_direction[DOF_JOINTS];  ///< configurable reported-position direction (+1/-1)
+    int    _motor_direction[DOF_JOINTS];    ///< configurable commanded-motor direction (+1/-1)
+    double _position_offset[DOF_JOINTS];    ///< additive joint-position correction (radian)
+    bool   _zero_position_on_start[DOF_JOINTS]; ///< capture the first reading as zero
+    bool   _position_zero_initialized[DOF_JOINTS];
 
     volatile bool _emergency_stop;          ///< something goes wrong?
 

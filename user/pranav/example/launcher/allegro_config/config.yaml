@@ -2,4 +2,12 @@ allegro_hand:
   hand_type: left
   rviz: true
   slidebar: false
-  
+  # The Ready keyboard command is implemented by the grasp controller.
+  controller: grasp
+  joint_11_position_direction: 1
+  joint_11_motor_direction: -1
+  # Straight-position offsets captured from this hand on 2026-09-09.
+  joint_9_position_offset: 0.059648843
+  joint_10_position_offset: 0.025297500
+  joint_11_position_offset: 1.724046840
+  ring_flexion_zero_on_start: false

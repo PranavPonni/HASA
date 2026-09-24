@@ -62,6 +62,17 @@
   <!-- yaml param files for your hand can be found in parameters/zero_files/ -->
   <arg name="ZEROS" default="$(arg PARAMS_DIR)/zero.yaml"/>
 
+  <!-- Optional per-joint polarity correction for a replacement joint-11
+       actuator/sensor. Values must be +1 or -1. -->
+  <arg name="JOINT_11_POSITION_DIRECTION" default="1"/>
+  <arg name="JOINT_11_MOTOR_DIRECTION" default="1"/>
+  <arg name="JOINT_9_POSITION_OFFSET" default="0.0"/>
+  <arg name="JOINT_10_POSITION_OFFSET" default="0.0"/>
+  <arg name="JOINT_11_POSITION_OFFSET" default="0.0"/>
+  <arg name="JOINT_9_ZERO_ON_START" default="false"/>
+  <arg name="JOINT_10_ZERO_ON_START" default="false"/>
+  <arg name="JOINT_11_ZERO_ON_START" default="false"/>
+
   <!--If true, respawn the controller if it dies. -->
   <arg name="RESPAWN" default="false"/>
 
@@ -108,6 +119,23 @@
     <rosparam file="$(arg PARAMS_DIR)/gains_pd.yaml" command="load" />
     <rosparam file="$(arg PARAMS_DIR)/gains_velSat.yaml" command="load" />
     <rosparam file="$(arg PARAMS_DIR)/initial_position.yaml" command="load" />
+
+    <param name="joint_position_direction/joint_11"
+           value="$(arg JOINT_11_POSITION_DIRECTION)" type="int" />
+    <param name="joint_motor_direction/joint_11"
+           value="$(arg JOINT_11_MOTOR_DIRECTION)" type="int" />
+    <param name="joint_position_offset/joint_9"
+           value="$(arg JOINT_9_POSITION_OFFSET)" type="double" />
+    <param name="joint_position_offset/joint_10"
+           value="$(arg JOINT_10_POSITION_OFFSET)" type="double" />
+    <param name="joint_position_offset/joint_11"
+           value="$(arg JOINT_11_POSITION_OFFSET)" type="double" />
+    <param name="joint_zero_on_start/joint_9"
+           value="$(arg JOINT_9_ZERO_ON_START)" type="bool" />
+    <param name="joint_zero_on_start/joint_10"
+           value="$(arg JOINT_10_ZERO_ON_START)" type="bool" />
+    <param name="joint_zero_on_start/joint_11"
+           value="$(arg JOINT_11_ZERO_ON_START)" type="bool" />
 
     <!-- Set the CAN channel automatically (using detect_pcan.py) if the
          AUTO_CAN parameter is true, otherwise use the CAN_DEVICE

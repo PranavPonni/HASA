@@ -46,6 +46,33 @@ AllegroHandDrv::AllegroHandDrv()
     , _curr_position_get(0)
     , _emergency_stop(false)
 {
+    // V4 normally reports all joints in the expected direction.  Keep +1 as
+    // the default, but allow a replacement actuator/sensor to be corrected
+    // without hard-coding a particular joint in the CAN parser.
+    for (int i = 0; i < DOF_JOINTS; ++i) {
+        const std::string joint = "joint_" + std::to_string(i);
+        ros::param::param<int>("~joint_position_direction/" + joint,
+                              _encoder_direction[i], 1);
+        ros::param::param<int>("~joint_motor_direction/" + joint,
+                              _motor_direction[i], 1);
+        ros::param::param<double>("~joint_position_offset/" + joint,
+                                 _position_offset[i], 0.0);
+        ros::param::param<bool>("~joint_zero_on_start/" + joint,
+                               _zero_position_on_start[i], false);
+        _position_zero_initialized[i] = false;
+
+        if (_encoder_direction[i] != 1 && _encoder_direction[i] != -1) {
+            ROS_WARN("Invalid position direction %d for joint_%d; using +1.",
+                     _encoder_direction[i], i);
+            _encoder_direction[i] = 1;
+        }
+        if (_motor_direction[i] != 1 && _motor_direction[i] != -1) {
+            ROS_WARN("Invalid motor direction %d for joint_%d; using +1.",
+                     _motor_direction[i], i);
+            _motor_direction[i] = 1;
+        }
+    }
+
     ROS_INFO("AllegroHandDrv instance is constructed.");
 }
 
@@ -215,7 +242,7 @@ void AllegroHandDrv::_writeDevices()
             pwmDouble[i] = -_pwm_max[i];
         }
 
-        pwm[i] = (short) pwmDouble[i];
+        pwm[i] = (short) (pwmDouble[i] * _motor_direction[i]);
     }
 
     for (int findex = 0; findex < 4; findex++) {
@@ -304,10 +331,23 @@ void AllegroHandDrv::_parseMessage(int id, int len, unsigned char* data)
 
             lIndexBase = findex * 4;
 
-            _curr_position[lIndexBase+0] = (double)(tmppos[0]) * ( 333.3 / 65536.0 ) * ( M_PI/180.0);
-            _curr_position[lIndexBase+1] = (double)(tmppos[1]) * ( 333.3 / 65536.0 ) * ( M_PI/180.0);
-            _curr_position[lIndexBase+2] = (double)(tmppos[2]) * ( 333.3 / 65536.0 ) * ( M_PI/180.0);
-            _curr_position[lIndexBase+3] = (double)(tmppos[3]) * ( 333.3 / 65536.0 ) * ( M_PI/180.0);
+            for (i = 0; i < 4; ++i) {
+                const int jointIndex = lIndexBase + i;
+                const double directedPosition =
+                    _encoder_direction[jointIndex] * (double)(tmppos[i]) *
+                    (333.3 / 65536.0) * (M_PI / 180.0);
+
+                if (_zero_position_on_start[jointIndex] &&
+                    !_position_zero_initialized[jointIndex]) {
+                    _position_offset[jointIndex] = -directedPosition;
+                    _position_zero_initialized[jointIndex] = true;
+                    ROS_WARN("Captured joint_%d straight-position offset: %.9f rad",
+                             jointIndex, _position_offset[jointIndex]);
+                }
+
+                _curr_position[jointIndex] =
+                    directedPosition + _position_offset[jointIndex];
+            }
 
             _curr_position_get |= (0x01 << (findex));
         }
