@@ -17,8 +17,8 @@ from allegro_package import AllegroHand
 from xela_py import TactileSubscriber
 from allegro_leader import AllegroPrecesionGrasp
 
-DATA_DIR = "/home/handlingteam2/HASA/user/pranav/example/data/tasks/newsmallbolt"
-MAX_TIMESTEP = 100
+DATA_DIR = "/home/handlingteam2/HASA/user/pranav/example/data/tasks/smallbolt/M3"
+MAX_TIMESTEP = 200
 CTRL_FREQ = 15.0
 HAND_TOPIC_PREFIX = "allegroHand_0"
 BACKGROUND_AUDIO_PATH = "/home/handlingteam2/HASA/user/pranav/example/script/util/beep.mp3"
