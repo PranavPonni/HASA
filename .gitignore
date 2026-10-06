@@ -27,6 +27,8 @@ data_server/
 *.xlsm
 *.xlsb
 *.pptx
+*.pdf
+*.zip
 ~$*.xls*
 model_weight/
 analysis/

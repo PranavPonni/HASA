@@ -202,7 +202,8 @@ def make_plots(out_dir: Path, summaries: List[Dict], finger_rows: List[Dict], hi
     import matplotlib.pyplot as plt
 
     ordered = sorted(summaries, key=lambda row: row["best_mae"])
-    colors = plt.cm.tab20(np.linspace(0, 1, len(ordered)))
+    PALETTE = ['#B4235F', '#4B5A69', '#E07B39', '#2A9D8F', '#7A5195', '#C9A227', '#3B6FD6', '#2E9E5B', '#E3A1BD', '#A8B2BC', '#7E1743', '#1F2A36', '#F0B27A', '#8FD1C8']
+    colors = [PALETTE[i % len(PALETTE)] for i in range(len(ordered))]
 
     fig, ax = plt.subplots(figsize=(14, 8), constrained_layout=True)
     for color, row in zip(colors, ordered):
@@ -244,8 +245,8 @@ def make_plots(out_dir: Path, summaries: List[Dict], finger_rows: List[Dict], hi
     final_values = np.asarray([row["final_mae"] for row in ordered])
     x = np.arange(len(ordered))
     fig, ax = plt.subplots(figsize=(15, 7), constrained_layout=True)
-    ax.bar(x - 0.2, best_values, width=0.4, label="best checkpoint", color="#3f7fba")
-    ax.bar(x + 0.2, final_values, width=0.4, label="epoch 500", color="#ff9b73")
+    ax.bar(x - 0.2, best_values, width=0.4, label="best checkpoint", color="#B4235F")
+    ax.bar(x + 0.2, final_values, width=0.4, label="epoch 500", color="#4B5A69")
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=42, ha="right")
     ax.set_ylabel("Raw taxel MAE")
@@ -258,7 +259,7 @@ def make_plots(out_dir: Path, summaries: List[Dict], finger_rows: List[Dict], hi
     by_key = {(row["variant"], row["finger"]): row for row in finger_rows}
     for field, title, filename, cmap, fmt in (
         ("mae_at_model_best", "Per-finger MAE at each model's best epoch", "per_finger_mae_heatmap.png", "magma_r", ".0f"),
-        ("accuracy_at_model_best", "Per-finger raw accuracy at each model's best epoch", "per_finger_accuracy_heatmap.png", "viridis", ".1f"),
+        ("accuracy_at_model_best", "Per-finger raw accuracy at each model's best epoch", "per_finger_accuracy_heatmap.png", "magma", ".1f"),
     ):
         matrix = np.asarray([
             [by_key[(row["variant"], finger)][field] for finger in FINGERS]

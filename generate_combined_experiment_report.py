@@ -268,7 +268,7 @@ def bar_page(
     labels: Sequence[str],
     values: Sequence[float],
     ylabel: str,
-    color: str = "#4c78a8",
+    color: str = "#B4235F",
     invert: bool = False,
     annotation: str = "",
 ) -> None:
@@ -302,8 +302,8 @@ def grouped_history_page(
     hist_vals = [num(key[(variant, "history-2step")][metric]) for variant in variants]
     x = np.arange(len(labels))
     fig, ax = plt.subplots(figsize=(11.69, 8.27), constrained_layout=True)
-    ax.bar(x - 0.18, no_vals, width=0.36, label="No tactile history", color="#9ecae1")
-    ax.bar(x + 0.18, hist_vals, width=0.36, label="2-step tactile history", color="#2f6b9a")
+    ax.bar(x - 0.18, no_vals, width=0.36, label="No tactile history", color="#4B5A69")
+    ax.bar(x + 0.18, hist_vals, width=0.36, label="2-step tactile history", color="#B4235F")
     ax.set_title(title, fontsize=15, weight="bold")
     ax.set_ylabel(ylabel)
     ax.set_xticks(x)
@@ -473,7 +473,7 @@ def make_report() -> Path:
             input_labels,
             input_values,
             "Best raw MAE",
-            color="#59a14f",
+            color="#B4235F",
             annotation="One newest completed 500-epoch run per FCN input variant. Lower is better. These runs are not a seeded significance test.",
         )
         input_table = [

@@ -33,12 +33,12 @@ AFTER = {
 }
 
 COMBO_COLORS = {
-    "thumb-index": "#1f77b4",
-    "thumb-middle": "#ff7f0e",
-    "index-middle": "#2ca02c",
-    "middle-ring": "#d62728",
-    "index-middle-ring": "#9467bd",
-    "thumb-index-middle": "#8c564b",
+    "thumb-index": "#B4235F",
+    "thumb-middle": "#4B5A69",
+    "index-middle": "#E07B39",
+    "middle-ring": "#2A9D8F",
+    "index-middle-ring": "#7A5195",
+    "thumb-index-middle": "#C9A227",
 }
 
 
