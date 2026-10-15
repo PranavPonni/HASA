@@ -55,6 +55,18 @@ def _fit_timesteps(value, target_len, front=False):
     return torch.cat([pad, value], dim=1) if front else torch.cat([value, pad], dim=1)
 
 
+def _front_pad_timesteps(value, target_len):
+    """Zero-pad temporal features at the front so that index ``t`` holds the feature of episode timestep ``t``.
+
+    The frozen self-touch model predicts the contact state of step ``t`` from steps ``<= t-1`` and therefore
+    returns one frame fewer than it was given; padding one zero frame at the front restores the timestep index.
+    """
+    if value.shape[1] >= target_len:
+        return value
+    pad = value.new_zeros(value.shape[0], target_len - value.shape[1], value.shape[-1])
+    return torch.cat([pad, value], dim=1)
+
+
 class SinusoidalPosEmb(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -166,6 +178,51 @@ class MotionViT(nn.Module):
         mask = _causal_mask(steps, obs.device) if self.causal else None
         tokens = self.encoder(tokens, mask=mask)
         return self.out(self.norm(tokens)), {}
+
+
+class MotionRNN(nn.Module):
+    """Recurrent (GRU / LSTM) next-step policy with one hidden state carried across the episode.
+
+    Trained teacher-forced on whole demonstrations (observations 0..T-2 -> targets 1..T-1) and deployed
+    closed-loop (``Motion.rollout_mode: closed_loop``): every control step the observed history is fed
+    through the network and the last output is the next command.
+    """
+
+    def __init__(self, obs_dim, action_dim, param):
+        super().__init__()
+        hidden = int(param.get("rnn_hidden_dim", param.get("d_model", 256)))
+        layers = max(1, int(param.get("rnn_layers", 2)))
+        dropout = float(param.get("dropout", 0.1))
+        cell = str(param.get("rnn_cell", param.get("dexwild_arch", "gru"))).lower()
+        if cell not in {"gru", "lstm"}:
+            cell = "gru"
+        self.cell_type = cell
+        self.input = nn.Sequential(
+            nn.Linear(obs_dim, hidden),
+            nn.LayerNorm(hidden),
+            nn.GELU(),
+            nn.Dropout(dropout),
+        )
+        rnn_cls = nn.LSTM if cell == "lstm" else nn.GRU
+        self.rnn = rnn_cls(
+            hidden,
+            hidden,
+            num_layers=layers,
+            batch_first=True,
+            dropout=dropout if layers > 1 else 0.0,
+        )
+        self.norm = nn.LayerNorm(hidden)
+        self.out = nn.Linear(hidden, action_dim)
+
+    def forward(self, obs, target_actions=None, output_steps=None):
+        del target_actions  # teacher forcing comes from the observation stream itself
+        hidden = self.input(obs)
+        hidden, _state = self.rnn(hidden)
+        pred = self.out(self.norm(hidden))
+        if output_steps is not None and int(output_steps) < pred.shape[1]:
+            # a recurrent policy emits one action per observed step; keep the most recent ones
+            pred = pred[:, -int(output_steps):]
+        return pred, {}
 
 
 class MotionDiffusion(nn.Module):
@@ -354,9 +411,19 @@ class DexWildMotionModel(nn.Module):
             self.policy = MotionDiffusion(obs_dim, self.action_dim, param)
         elif arch == "vit":
             self.policy = MotionViT(obs_dim, self.action_dim, param)
+        elif arch in {"rnn", "gru", "lstm"}:
+            self.policy = MotionRNN(obs_dim, self.action_dim, param)
+            arch = "rnn"
         else:
             raise ValueError(f"Unknown dexwild_arch: {arch}")
         self.arch = arch
+        # Model.selftouch_feature_align: window -> frozen self-touch features are indexed by episode
+        # timestep (front-padded by one frame) for every architecture, so the cached training
+        # features and the live rollout features of the observed steps coincide.
+        self.selftouch_window_aligned = bool(
+            self.use_selftouch
+            and str(param.get("selftouch_feature_align", "legacy")).lower() == "window"
+        )
 
         if self.selftouch is not None:
             self.selftouch.eval()
@@ -574,6 +641,12 @@ class DexWildMotionModel(nn.Module):
                 features[key] = out[dict_key]
             else:
                 features[key] = out[tuple_idx]
+        if self.selftouch_window_aligned:
+            # index t == feature of timestep t (the model's frame i predicts timestep i+1)
+            features = {
+                key: _front_pad_timesteps(value, pos.shape[1]) if torch.is_tensor(value) else value
+                for key, value in features.items()
+            }
         return features
 
     def _selftouch_teacher_features(self, streams, **selftouch_kwargs):
@@ -657,6 +730,7 @@ class DexWildMotionModel(nn.Module):
         joint_std = _noise_value(noise, "joint_noise", 0.0)
 
         st_features = self._selftouch_features(streams, **selftouch_kwargs)
+        st_features = self._apply_selftouch_feature_override(st_features)
         mode = self.selftouch_feature_mode if st_features is not None else "append"
         parts = []
         for key in self.tactile_keys:
@@ -687,6 +761,32 @@ class DexWildMotionModel(nn.Module):
                     * self.selftouch_feature_scale
                 )
         return torch.cat(parts, dim=-1)
+
+    def _apply_selftouch_feature_override(self, features):
+        """Test-time ablation of the self-touch channel (Motion.selftouch_feature_override):
+        'zero' -> all-zero features, 'shuffle_time' -> time order permuted (same permutation for all fingers),
+        'constant' -> each feature frozen at its time-mean. None/'intact' leaves the channel untouched."""
+        mode = str(getattr(self, "selftouch_feature_override", None) or "intact").lower()
+        if features is None or mode in {"intact", "none", ""}:
+            return features
+        out = {}
+        perm = None
+        for key, value in features.items():
+            if not torch.is_tensor(value):
+                out[key] = value
+                continue
+            if mode == "zero":
+                out[key] = torch.zeros_like(value)
+            elif mode == "shuffle_time":
+                if perm is None or perm.numel() != value.shape[1]:
+                    g = torch.Generator(device="cpu").manual_seed(int(getattr(self, "_override_seed", 0)) + int(value.shape[1]))
+                    perm = torch.randperm(int(value.shape[1]), generator=g).to(value.device)
+                out[key] = value[:, perm]
+            elif mode == "constant":
+                out[key] = value.mean(dim=1, keepdim=True).expand_as(value)
+            else:
+                raise ValueError(f"unknown selftouch_feature_override: {mode}")
+        return out
 
     def _target_actions(self, streams):
         return torch.cat(
@@ -1061,23 +1161,9 @@ class DexWildMotionModel(nn.Module):
                 **selftouch_kwargs,
             )
             return {key: value[:, 0] for key, value in chunk_preds.items()}
-        parts = []
-        for key in self.tactile_keys:
-            parts.append(self._stream_sequence(streams, key))
-        for key in self.joint_state_keys:
-            parts.append(self._stream_sequence(streams, key))
-        obs = torch.cat(parts, dim=-1)
-
-        st_features = self._selftouch_features(streams, **selftouch_kwargs)
-        if st_features is not None:
-            target_len = obs.shape[1]
-            obs = torch.cat(
-                [obs]
-                + [
-                    _fit_timesteps(st_features[key], target_len)
-                    for key in self.selftouch_feature_keys
-                ],
-                dim=-1,
-            )
+        # Closed-loop step: the observed history goes through the same observation builder as
+        # training (self-touch feature scale, residual mode, test-time channel override), and the
+        # prediction for the most recent step is the next command.
+        obs = self._build_obs(streams, drop_last=False, **selftouch_kwargs)
         pred_actions, _ = self.policy(obs, None)
         return {key: value[:, -1] for key, value in self._split(pred_actions).items()}
