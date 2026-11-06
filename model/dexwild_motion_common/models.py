@@ -621,6 +621,13 @@ class DexWildMotionModel(nn.Module):
                 key: pos.new_zeros(pos.shape[0], pos.shape[1], self.tactile_dim)
                 for key in self.selftouch_feature_keys
             }
+        if self._input_override_mode() == "wrong_config":
+            # Test-time ablation (Motion.selftouch_feature_override: wrong_config): the frozen
+            # self-touch model is fed the hand state of a *wrong* finger configuration, i.e. the
+            # three long-finger joint blocks are cyclically permuted (index <- middle <- ring <- index,
+            # thumb unchanged) for position, velocity, torque and command. The channel then carries
+            # a plausible, in-range but wrong self-touch map for the hand's actual configuration.
+            pos, vel, trq, cmd = (self._permute_finger_blocks(x) for x in (pos, vel, trq, cmd))
         with torch.no_grad():
             out = self.selftouch(
                 pos,
@@ -762,12 +769,30 @@ class DexWildMotionModel(nn.Module):
                 )
         return torch.cat(parts, dim=-1)
 
+    # Input-side ablations act on what the frozen self-touch model sees (see _selftouch_features);
+    # output-side ablations act on the channel it produced (_apply_selftouch_feature_override).
+    INPUT_SIDE_OVERRIDES = ("wrong_config",)
+    FINGER_BLOCKS = {"index": slice(0, 4), "middle": slice(4, 8), "ring": slice(8, 12), "thumb": slice(12, 16)}
+
+    def _input_override_mode(self):
+        mode = str(getattr(self, "selftouch_feature_override", None) or "intact").lower()
+        return mode if mode in self.INPUT_SIDE_OVERRIDES else "intact"
+
+    def _permute_finger_blocks(self, x):
+        """Cyclic permutation of the index/middle/ring joint blocks of a (..., 16) Allegro joint tensor."""
+        if x is None or not torch.is_tensor(x) or x.shape[-1] != 16:
+            return x
+        b = self.FINGER_BLOCKS
+        return torch.cat([x[..., b["middle"]], x[..., b["ring"]], x[..., b["index"]], x[..., b["thumb"]]], dim=-1)
+
     def _apply_selftouch_feature_override(self, features):
         """Test-time ablation of the self-touch channel (Motion.selftouch_feature_override):
         'zero' -> all-zero features, 'shuffle_time' -> time order permuted (same permutation for all fingers),
-        'constant' -> each feature frozen at its time-mean. None/'intact' leaves the channel untouched."""
+        'constant' -> each feature frozen at its time-mean, 'wrong_config' -> handled on the input side
+        (the frozen model sees a permuted finger configuration, its output is passed through here).
+        None/'intact' leaves the channel untouched."""
         mode = str(getattr(self, "selftouch_feature_override", None) or "intact").lower()
-        if features is None or mode in {"intact", "none", ""}:
+        if features is None or mode in {"intact", "none", ""} or mode in self.INPUT_SIDE_OVERRIDES:
             return features
         out = {}
         perm = None
